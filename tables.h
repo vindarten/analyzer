@@ -1,34 +1,45 @@
 enum {
 	LexEmpty, LexIdent, LexValInt, LexValReal, LexStr, LexBirth, LexDeath,
-	LexDie, LexInt, LexReal, LexString, LexIf, LexElse, LexWhile,
-	LexOr, LexAnd, LexPut, LexGet, LexLB, LexRB, LexLSB, LexRSB, LexLParen,
-	LexRParen, LexComma, LexColon, LexSemicolon, LexAdd, LexSub, LexMul,
-	LexDiv, LexAssign, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexNeg,
-	LexError
+	LexDie, LexInt, LexReal, LexString, 
+	LexIf, LexElse, LexWhile, LexPut, LexGet, LexComma, LexSemicolon,
+	LexAssign, LexMultiAssign,
+	LexLB, LexRB, LexLSB, LexRSB, LexLParen, LexRParen,
+	LexOr, LexAnd, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexAdd, LexSub,
+	LexMul, LexDiv, LexNeg,	LexError
 };
 
 const char *TableOfWords[] = 
 {
 	"", "", "", "", "", "birth", "death", "die", "int", "real", "string",
-	"if", "else", "while", "or", "and", "put", "get", "{", "}",
-	"[", "]", "(", ")", ",", ":", ";", "+", "-", "*", "/", "=", "<", "<=",
-	">", ">=", "==", "=!", "!", NULL
+	"if", "else", "while", "put", "get", ",", ";", "=", ":=",
+	"{", "}", "[", "]", "(", ")",
+	"or", "and", "<", "<=", ">", ">=", "==", "=!", "+", "-", "*", "/", "!",
+	NULL
 };
 
 enum {
 	InvalLex, BirthExpect, DeathExpect, NothingExpect, SemicolonExpect,
-	IdentAfterInt, IdentAfterCommaInt, LParenInt, ValIntOrIdent, RParenInt,
-	IdentAfterReal, IdentAfterCommaReal, LParenReal, ValOrIdentReal, 
-	RParenReal,	IdentAfterStr, IdentAfterCommaStr, LParenStr, StrExpect, 
+	IdentAfterInt,
+	RpArrFstInt, ValArrFstInt, RpArrScdInt, ValArrScdInt,
+	RParenInitValIntExp, ValOrIdentInitValIntExp,
+	LParenInt, ValIntOrIdent, RParenInt,
+	IdentAfterReal,
+	RpArrFstReal, ValArrFstReal, RpArrScdReal, ValArrScdReal,
+	RParenInitValRealExp, ValOrIdentInitValRealExp,
+	LParenReal, ValOrIdentReal, RParenReal,
+	IdentAfterStr,	
+	IdentAfterCommaStr, LParenStr, StrExpect, 
 	RParenStr, ValIntOrIdentArray,
 	ValIntOrIdentArraySec, RSBExpect, LParenWhile, RParenWhileExp, 
 	ValOrIdentWhileExp, RParenWhile, LBWhile, RBWhile, LParenGet, IdentGet,
 	IdentGetComma, RParenGet, LParenPut, RParenPutExp, ValOrIdentPutExp,
-	RParenPut, AssignExpect, RParenAssignExp, ValOrIdentAssignExp, LParenFor,
-	ValIntOrIdentForFirst, CommaForFirst, ValIntOrIdentForSecond,
-	CommaForSecond, ValIntOrIdentForThird, RParenFor, LBFor, RBFor, LParenIf,
+	RParenPut,
+	AssignExpect, IdentExpectAssign, RParenAssignExp, ValOrIdentAssignExp,
+	LParenIf,
 	RParenIfExp, ValOrIdentIfExp, RParenIf, LBIfExpect, RBIfExpect,
-	LBElseExpect, RBElseExpect
+	LBElseExpect, RBElseExpect,
+	RpArrFstExp, ValArrFstExp, RpArrScdExp, ValArrScdExp,
+	RpArrFstAsgn, ValArrFstAsgn, RpArrScdAsgn, ValArrScdAsgn
 };
 
 const char *TableOfErrors[] = 
@@ -38,18 +49,44 @@ const char *TableOfErrors[] =
 	"\"death\" expected in the end of the program",
 	"lexeme after end of the program",
 	"\";\" expected in the end of statement",
-	"identifier expected after \"int\"",
-	"identifier expected after \",\" in description of integer",
+	"identifier expected in description of integer",
+	"\")\" expected in the condition of first dimension of array "
+	"in description of integer",
+	"identifier or int or real value expected in the condition of "
+	"first dimension of array in description of integer",
+	"\")\" expected in the condition of second dimension of array "
+	"in description of integer",
+	"identifier or int or real value expected in the condition of "
+	"second dimension of array in description of integer",
+	"\")\" expected in the condition of initial value "
+	"in description of integer",
+	"identifier or int or real value expected in the condition of "
+	"initial value in description of integer",
+	"all variables must be initialized: "
 	"\"(\" expected after identifier in description of integer",
 	"identifier or int value expected after \"(\" in description of integer",
 	"\")\" expected after initial value in description of integer",
-	"identifier expected after \"real\"",
-	"identifier expected after \",\" in description of real",
+	"identifier expected in description of real",
+	"\")\" expected in the condition of first dimension of array "
+	"in description of real",
+	"identifier or int or real value expected in the condition of "
+	"first dimension of array in description of real",
+	"\")\" expected in the condition of second dimension of array "
+	"in description of real",
+	"identifier or int or real value expected in the condition of "
+	"second dimension of array in description of real",
+	"\")\" expected in the condition of initial value "
+	"in description of real",
+	"identifier or int or real value expected in the condition of "
+	"initial value in description of real",
+	"all variables must be initialized: "
 	"\"(\" expected after identifier in description of real",
-	"identifier or real or int value expected after \"(\" in description of real",
+	"identifier or real or int value expected after \"(\" "
+	"in description of real",
 	"\")\" expected after initial value in description of real",
 	"identifier expected after \"string\"",
 	"identifier expected after \",\" in description of string",
+	"all variables must be initialized: "
 	"\"(\" expected after identifier in description of string",
 	"string expected after \"(\" in description of string",
 	"\")\" expected after initial value in description of string",
@@ -71,17 +108,9 @@ const char *TableOfErrors[] =
 	"identifier or int or real value expected in the argument of \"put\"",
 	"\")\" expected after the argument of \"put\"",
 	"\"=\" expected after identifier in the assignment",
+	"identifier expected after \":=\" in the assignment",
 	"\")\" expected in the assignment",
 	"identifier or int or real value expected in the assignment",
-	"\"(\" expected after identifier in \"iter-cycle\"",
-	"first identifier or int value expected after \"(\" in \"iter-cycle\"",
-	"\",\" expected after the first parameter of \"iter-cycle\"",
-	"second identifier or int value expected after \",\" in \"iter-cycle\"",
-	"\",\" expected after the second parameter of \"iter-cycle\"",
-	"third identifier or int value expected after \",\" in \"iter-cycle\"",
-	"\")\" expected after the third parameter of \"iter-cycle\"",
-	"\"{\" expected after \")\" in the beginning of \"iter-cycle\" body",
-	"\"}\" expected in the end of \"iter-cycle\" body",
 	"\"(\" expected after \"if\"",
 	"\")\" expected in the condition of \"if\"",
 	"identifier or int or real value expected in the condition of \"if\"",
@@ -89,5 +118,21 @@ const char *TableOfErrors[] =
 	"\"{\" expected after \")\" in the beginning of \"if\" body",
 	"\"}\" expected in the end of \"if\" body",
 	"\"{\" expected after \"else\" in the beginning of \"else\" body",
-	"\"}\" expected in the end of \"else\" body"
+	"\"}\" expected in the end of \"else\" body",
+	"\")\" expected in the condition of first dimension of array "
+	"in description of expression",
+	"identifier or int or real value expected in the condition of "
+	"first dimension of array in description of expression",
+	"\")\" expected in the condition of second dimension of array "
+	"in description of expression",
+	"identifier or int or real value expected in the condition of "
+	"second dimension of array in description of expression"
+	"\")\" expected in the condition of first dimension of array "
+	"in description of assignment",
+	"identifier or int or real value expected in the condition of "
+	"first dimension of array in description of assignment",
+	"\")\" expected in the condition of second dimension of array "
+	"in description of assignment",
+	"identifier or int or real value expected in the condition of "
+	"second dimension of array in description of assignment"
 };
