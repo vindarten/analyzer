@@ -1,50 +1,97 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
 enum {
-	LexEmpty, LexIdent, LexConst, LexStr, LexCom, LexBirth, LexDeath, LexDie,
-	LexInt,	LexReal, LexString, LexIter, LexIf, LexElse, LexWhile, LexDo,
-	LexPut, LexGet, LexLB, LexRB, LexLSB, LexRSB, LexLParen, LexRParen,
+	LexEmpty, LexIdent, LexValInt, LexValReal, LexStr, LexBirth, LexDeath,
+	LexDie, LexInt, LexReal, LexString, LexIter, LexIf, LexElse, LexWhile,
+	LexDo, LexPut, LexGet, LexLB, LexRB, LexLSB, LexRSB, LexLParen, LexRParen,
 	LexComma, LexColon, LexSemicolon, LexPlus, LexMinus, LexMul, LexDiv,
 	LexAssign, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexError,
 };
 
+const char *TableOfWords[] = 
+{
+	"", "", "", "", "", "birth", "death", "die", "int", "real", "string",
+	"iterator",	"if", "else", "while", "do", "put", "get", "{", "}", "[", "]",
+	"(", ")", ",", ":", ";", "+", "-", "*", "/", "=", "<", "<=", ">", ">=",
+	"==", "=!",	NULL
+};
+
 class Lexeme {
-	char *value;
+	void *value;
 	int LexNum, LineNum;
 public:
-	Lexeme(): LexNum(0), LineNum(0) { value = NULL; }
+	Lexeme(): value(NULL), LexNum(0), LineNum(0) {}
 	Lexeme(char buf[], int &BufSize, int line, int num)
 	{
 		LexNum = num;
 		LineNum = line;
-//		if (LexNum == LexIdent || LexNum == LexConst || LexNum == LexCom) {
+		if (LexNum == LexIdent) {
+			value = new char[BufSize];
+			for(int i = 0; i < BufSize; i++)
+				((char *)value)[i] = buf[i+1];
+		}
+		if (LexNum == LexStr) {
+			value = new char[BufSize - 1];
+			for(int i = 0; i < BufSize - 2; i++)
+				((char *)value)[i] = buf[i+1];
+			((char *)value)[BufSize - 1] = 0;
+		}
+		if (LexNum == LexValInt)
+			value = new long long(strtoll(buf+1, NULL, 10));
+		if (LexNum == LexValReal)
+			value = new double(strtod(buf+1, NULL));
+		if (LexNum == LexError) {
 			value = new char[BufSize + 1];
 			for(int i = 0; i <= BufSize; i++)
-				value[i] = buf[i];
-//		}
+				((char *)value)[i] = buf[i];
+		}
 		buf[0] = 0;
 		BufSize = 0;
 	}
-	int NotEmpty() { return LexNum; }
+	int Empty() { return !LexNum; }
 	int CheckCorrect() { return LexNum != LexError; }  
 	void Print() 
 	{
 		printf("%d: %d ", LineNum, LexNum);
-//		if (LexNum == LexIdent || LexNum == LexConst || LexNum == LexCom)
-			printf("%s", value);
-		printf("\n");
+		if (LexNum == LexIdent || LexNum == LexStr) {
+			printf("%s\n", (char *)value);
+		} else if (LexNum == LexValInt) {
+			printf("%lld\n", *(long long *)value);
+		} else if (LexNum == LexValReal) {
+			printf("%f\n", *(double *)value); 
+		} else {
+			printf("\n");
+		}
 	}
 	void PrintError()
 	{
-		printf("Error in line %d: invalid lexeme %s\n", LineNum, value);
+		printf("Error in line %d: invalid lexeme ", LineNum);
+		if (LexNum == LexIdent || LexNum == LexStr) {
+			printf("%s\n", (char *)value);
+		} else if (LexNum == LexValInt) {
+			printf("%lld\n", *(long long *)value);
+		} else if (LexNum == LexValReal) {
+			printf("%f\n", *(double *)value);
+		} else {
+			printf("%s\n", (char *)value);
+		}
+	}
+	~Lexeme()
+	{
+		if (LexNum == LexIdent || LexNum == LexStr)
+			delete [] (char *)value;
+		if (LexNum == LexValInt)
+			delete (long long *)value;
+		if (LexNum == LexValReal)
+			delete (double *)value;
 	}
 };
 
 class Automat {
 	enum {H, String, Ident, Int, Real, Equal, lg, Comment, Error, S, SResend};
 	enum {MaxBuf = 4096};
-	static const char *TableOfWords[];
 	Lexeme *lex;
 	char buf[MaxBuf];
 	int BufSize, state, line;
@@ -59,6 +106,7 @@ class Automat {
 	void StateLessGreater(char c);
 	void StateComment(char c);
 	void AddBuf(char c);
+	int SearchPoint();
 	int GetLexNum();
 	int Letter(char c); 
 	int Digit(char c);
@@ -70,16 +118,8 @@ class Automat {
 	int All(char c);
 	int Delimiter(char c);
 public:
-	Automat(): BufSize(0), state(H), line(1) { buf[0] = 0; lex = NULL; }
+	Automat(): lex(NULL), BufSize(0), state(H), line(1) { buf[0] = 0; }
 	Lexeme *FeedChar(char c);
-};
-
-const char *Automat::TableOfWords[] = 
-{
-	"", "", "", "", "", "birth", "death", "die", "int", "real", "string", "iterator",
-	"if", "else", "while", "do", "put", "get", "{", "}", "[", "]", "(", ")",
-	",", ":", ";", "+", "-", "*", "/", "=", "<", "<=", ">", ">=", "==", "=!",
-	NULL
 };
 
 int Automat::Letter(char c) 
@@ -124,7 +164,8 @@ int Automat::All(char c)
 
 int Automat::Delimiter(char c)
 {
-	return EndLine(c)||Brace(c)||Compare(c)||Single(c)||c=='&'||c=='#'||c==' ';
+	int a = c == ' ' || c == '\t';
+	return EndLine(c)||Brace(c)||Compare(c)||Single(c)||c=='&'||c=='#'||a;
 }
 
 Lexeme *Automat::FeedChar(char c)
@@ -159,11 +200,11 @@ Lexeme *Automat::StateS(char c, int begin)
 		ChangeState(c);
 		AddBuf(c);
 	}
-	if ((*lex).NotEmpty()) {
-		return lex;
-	} else {
-		return NULL;
+	if ((*lex).Empty()) {
+		delete lex;
+		lex = NULL;
 	}
+	return lex;
 }
 
 void Automat::ChangeState(char c)
@@ -287,15 +328,28 @@ void Automat::AddBuf(char c)
 	}
 }
 
+int Automat::SearchPoint()
+{
+	for(int i = 0; i < BufSize; i++)
+		if (buf[i] == '.')
+			return 1;
+	return 0;
+}
+
 int Automat::GetLexNum()
 {
 	int i = 0;
 	if (buf[0] == '&')
 		return LexIdent;
-	if (buf[0] == '#')
-		return LexConst;
+	if (buf[0] == '#') { 
+		if (SearchPoint()) {
+			return LexValReal;
+		} else {
+		return LexValInt;
+		}
+	}
 	if (buf[0] == '/')
-		return LexCom;
+		return LexEmpty;
 	if (buf[0] == '"')
 		return LexStr;
 	while(TableOfWords[i] != NULL) {
