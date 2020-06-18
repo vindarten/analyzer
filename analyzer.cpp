@@ -1,7 +1,6 @@
 #include <stdio.h>
 
 enum {MaxName = 128};
-enum {NotReady, Finish, FinishResend, Error};
 
 int Letter(char c) 
 {
@@ -49,13 +48,14 @@ int Delimiter(char c)
 }
 
 class Lexeme {
-public:
 	char name[MaxName];
-	int NameSize, LexType, LineNum;
+	int NameSize, LexNum, LineNum, Correct;
+public:
 	Lexeme()
 	{
 		name[0] = 0;
-		NameSize = LexType = LineNum = 0;
+		Correct = 1;
+		NameSize = LexNum = LineNum = 0;
 	}
 	void AddChar(char c)
 	{
@@ -65,58 +65,38 @@ public:
 		}
 	}
 	int NotEmpty() { return NameSize; }
-	void SetLineNum(int n) { LineNum = n; }  
-	void PrintLexeme()
-	{
-		if (NotEmpty()) {
-			printf("%s\n", name);
-		}
-	}
+	void SetLineNum(int n) { LineNum = n; }
+	int GetLineNum() { return LineNum; }
+	void Incorrect() { Correct = 0; }
+	int CheckCorrect() { return Correct; }  
+	void PrintLexeme() { printf("%d: %s\n", LineNum, name); }
 };
-
-struct ListOfLexeme {
-	Lexeme lex;
-	ListOfLexeme *next;
-	ListOfLexeme (): lex(), next(NULL) {}
-};
-
-ListOfLexeme *AddLex(ListOfLexeme *list, int n)
-{
-	if ((*list).lex.NotEmpty()) {
-		ListOfLexeme *help;
-		(*list).lex.SetLineNum(n);
-		help = new ListOfLexeme;
-		(*help).next = list;
-		list = help;
-	}
-	return list;
-}
-
-void PrintListOfLex(ListOfLexeme *list)
-{
-	while(list != NULL) {
-		(*list).lex.PrintLexeme();
-		list = (*list).next;
-	}
-}
 
 class Automat {
-	enum {H, String, Ident, Int, Real, Equal, LessGreater, Comment}; 
-	int state;
-	int StateH(char c);
-	int StateString(char c);
-	int StateIdent(char c);
-	int StateInt(char c);
-	int StateReal(char c);
-	int StateEqual(char c);
-	int StateLessGreater(char c);
-	int StateComment(char c);
+	enum {H, String, Ident, Int, Real, Equal, LessGreater, Comment, Error, S, SResend}; 
+	Lexeme *lex, *ReadyLex;	
+	int state, LineNumber;
+	void StateH(char c);
+	void StateString(char c);
+	void StateIdent(char c);
+	void StateInt(char c);
+	void StateReal(char c);
+	void StateEqual(char c);
+	void StateLessGreater(char c);
+	void StateComment(char c);
+	void StateS(char c);
 public:
-	Automat() {	state = H; }
-	int FeedChar(char c);
+	Automat()
+	{
+		state = H;
+		LineNumber = 1;
+		ReadyLex = NULL;
+		lex = new Lexeme;
+	}
+	Lexeme *FeedChar(char c);
 };
 
-int Automat::StateH(char c)
+void Automat::StateH(char c)
 {
 	if (c == '#') {
 		state = Int;
@@ -131,160 +111,188 @@ int Automat::StateH(char c)
 	} else if (c == '/') {
 		state = Comment;
 	} else if (EndLine(c) || Brace(c) || Single(c) || c == ' ') {
-		return Finish;
+		state = S;
 	} else {
-		return Error;
+		state = Error;
 	}
-	return NotReady;
+	(*lex).AddChar(c);
 }
 
-int Automat::StateString(char c)
+void Automat::StateString(char c)
 {
 	if (c == '\"') {
-		state = H;
-		return Finish;
+		state = S;
 	} else if (All(c) || c == ' ' || c == '\t') {
-		return NotReady;
 	} else {
-		return Error;
+		state = Error;
 	}
+	(*lex).AddChar(c);
 }
 
-int Automat::StateIdent(char c)
+void Automat::StateIdent(char c)
 {
 	if (Letter(c) || Digit(c)) {
-		return NotReady;
 	} else if (Delimiter(c)) {
-		state = H;
-		return FinishResend;
+		state = SResend;
+		return;
 	} else {
-		return Error;
+		state = Error;
 	}
+	(*lex).AddChar(c);
 }
 
-int Automat::StateInt(char c)
+void Automat::StateInt(char c)
 {
 	if (Digit(c)) {
 	} else if (c == '.') {
 		state = Real;
 	} else if (Delimiter(c)) {
-		state = H;
-		return FinishResend;
+		state = SResend;
+		return;
 	} else {
-		return Error;
+		state = Error;
 	}
-	return NotReady;
+	(*lex).AddChar(c);
 }
 
-int Automat::StateReal(char c)
+void Automat::StateReal(char c)
 {
 	if (Digit(c)) {
 	} else if (Delimiter(c)) {
-		state = H;
-		return FinishResend;
+		state = SResend;
+		return;
 	} else {
-		return Error;
+		state = Error;
 	}
-	return NotReady;
+	(*lex).AddChar(c);
 }
 
-int Automat::StateEqual(char c)
+void Automat::StateEqual(char c)
 {
 	if (c == '=' || c == '!') {
-		state = H;
-		return Finish;
+		state = S;
 	} else if (Delimiter(c)) {
-		state = H;
-		return FinishResend;
+		state = SResend;
+		return;
 	} else {
-		return Error;
+		state = Error;
 	}
+	(*lex).AddChar(c);
 }
 
-int Automat::StateLessGreater(char c)
+void Automat::StateLessGreater(char c)
 {
 	if (c == '=') {
-		state = H;
-		return Finish;
+		state = S;
 	} else if (Delimiter(c)) {
-		state = H;
-		return FinishResend;
+		state = SResend;
+		return;
 	} else {
-		return Error;
+		state = Error;
 	}
+	(*lex).AddChar(c);
 }
 
-int Automat::StateComment(char c)
+void Automat::StateComment(char c)
 {
 	if (EndLine(c)) {
-		state = H;
-		return Finish;
+		state = S;
 	} else {
-		return NotReady;
+		(*lex).AddChar(c);
 	}
 }
 
-int Automat::FeedChar(char c)
+void Automat::StateS(char c)
 {
-	if (state == H) {
-		return StateH(c);
-	} else if (state == String) {
-		return StateString(c);
-	} else if (state == Ident) {
-		return StateIdent(c);
-	} else if (state == Int) {
-		return StateInt(c);
-	} else if (state == Real) {
-		return StateReal(c);
-	} else if (state == Equal) {
-		return StateEqual(c);
-	} else if (state == LessGreater) {
-		return StateLessGreater(c);
-	} else if (state == Comment) {
-		return StateComment(c);
-	} else {
-		return Error;
-	}
-}
-
-char GetChar(FILE *f, int &LineNumber)
-{
-	char c = fgetc(f);
+	state = H;
+	ReadyLex = lex;
+	(*ReadyLex).SetLineNum(LineNumber);
 	if (c == '\n')
 		LineNumber++;
-	return c;
+	lex = new Lexeme;
+}
+
+Lexeme *Automat::FeedChar(char c)
+{
+	if (state == H) {
+		StateH(c);
+	} else if (state == String) {
+		StateString(c);
+	} else if (state == Ident) {
+		StateIdent(c);
+	} else if (state == Int) {
+		StateInt(c);
+	} else if (state == Real) {
+		StateReal(c);
+	} else if (state == Equal) {
+		StateEqual(c);
+	} else if (state == LessGreater) {
+		StateLessGreater(c);
+	} else if (state == Comment) {
+		StateComment(c);
+	}
+	if (state == S || state == SResend) {
+		StateS(c);
+		if (state == SResend)
+			FeedChar(c);
+		if ((*ReadyLex).NotEmpty())
+			return ReadyLex;
+	} else if (state == Error) {
+		(*lex).Incorrect();
+		return lex;
+	}
+	return NULL;
+}
+
+void PrintError(Lexeme *lex)
+{
+	printf("Error in line %d: invalid lexeme", (*lex).GetLineNum());
+	(*lex).PrintLexeme();
+}
+
+struct ListOfLexeme {
+	Lexeme *lex;
+	ListOfLexeme *next;
+	ListOfLexeme (): next(NULL) { lex = new Lexeme;}
+};
+
+void PrintListOfLex(ListOfLexeme *list)
+{
+	while(list != NULL) {
+		(*(*list).lex).PrintLexeme();
+		list = (*list).next;
+	}
 }
 
 int main(int argc, char **argv)
 {
-	ListOfLexeme *list = new ListOfLexeme;
+//	ListOfLexeme *list = new ListOfLexeme, *help;
 	Automat automat;
-	int LineNumber = 1, res;
+	Lexeme *lex;
 	FILE *f;
 	char c;
 	if (argc < 2)
 		return 0;
 	if (!(f = fopen(argv[1], "r")))
 		return 0;
-	c = GetChar(f, LineNumber);
-	while(c != EOF) {
-		res = automat.FeedChar(c);
-		if (res == Finish) {
-			(*list).lex.AddChar(c);
-			(*list).lex.PrintLexeme();
-			list = AddLex(list, LineNumber);
-			c = GetChar(f, LineNumber);
-		} else if (res == FinishResend) {
-			(*list).lex.PrintLexeme();
-			list = AddLex(list, LineNumber);
-		} else if (res == Error) {
-			printf("Error in line %d: invalid character %c\n", LineNumber, c);
-			return 0;
-		} else if (res == NotReady) {
-			(*list).lex.AddChar(c);
-			c = GetChar(f, LineNumber);
+	while((c = fgetc(f)) != EOF) {
+		if ((lex = automat.FeedChar(c)) != NULL) {
+			if ((*lex).CheckCorrect()) {
+				(*lex).PrintLexeme();
+			} else {
+				PrintError(lex);
+				return 0;
+			}
 		}
 	}
-	
+	if ((lex = automat.FeedChar(' ')) != NULL) {
+		if ((*lex).CheckCorrect()) {
+			(*lex).PrintLexeme();
+		} else {
+			PrintError(lex);
+			return 0;
+		}
+	}
+	printf("Correct\n");
 	return 0;
 }
