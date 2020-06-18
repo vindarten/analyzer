@@ -1,0 +1,1 @@
+birth int&a[#10](#0),&b(#0);string&s("Max: ");iterator&i;&i[#0,#9,#1]{get(&a[&i]);}&i[#0,#9,#1]{if(&a[&i]<#0){die;}else{if(&a[&i]>&b){&b=&a[&i];}}}put(&s,&b);death
