@@ -1,69 +1,54 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "tables.h"
 
-enum {
-	LexEmpty, LexIdent, LexValInt, LexValReal, LexStr, LexBirth, LexDeath,
-	LexDie, LexInt, LexReal, LexString, LexIter, LexIf, LexElse, LexWhile,
-	LexOr, LexAnd, LexPut, LexGet, LexLB, LexRB, LexLSB, LexRSB, LexLParen,
-	LexRParen, LexComma, LexColon, LexSemicolon, LexAdd, LexSub, LexMul,
-	LexDiv, LexAssign, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexNeg,
-	LexError
-};
-
-const char *TableOfWords[] = 
-{
-	"", "", "", "", "", "birth", "death", "die", "int", "real", "string",
-	"iterator",	"if", "else", "while", "or", "and", "put", "get", "{", "}",
-	"[", "]", "(", ")", ",", ":", ";", "+", "-", "*", "/", "=", "<", "<=",
-	">", ">=", "==", "=!", "!", NULL
-};
+enum {Int, Real, Iterator, String};
 
 class Lexeme {
 	void *value;
-	int LexNum, LineNum;
+	int LexNum, LineNum, TableIDNum, IdentType;
 public:
-	Lexeme(): value(NULL), LexNum(LexEmpty), LineNum(0) {}
+	Lexeme()
+		: value(NULL), LexNum(LexEmpty), LineNum(0),
+		TableIDNum(0), IdentType(Int) {}
 	Lexeme(char buf[], int &BufSize, int line, int num);
 	Lexeme(int line, int num);
 	int Empty() { return !LexNum; }
 	int CheckCorrect() { return LexNum != LexError; } 
 	int GetLexNum() { return LexNum; } 
 	int GetLineNum() { return LineNum; }
+	void SetTableNum(int i) { TableIDNum = i; }
+	void SetIdentType(int i) { IdentType = i; }
 	void Print(); 
-	void PrintInvalLex();
 	~Lexeme();
 };
 
 Lexeme::Lexeme(char buf[], int &BufSize, int line, int num)
+	:TableIDNum(0), IdentType(Int)
 {
 	LexNum = num;
 	LineNum = line;
-	if (LexNum == LexIdent) {
-		value = new char[BufSize];
-		for(int i = 0; i < BufSize; i++)
-			((char *)value)[i] = buf[i+1];
-	}
-	if (LexNum == LexStr) {
+	if (LexNum == LexIdent || LexNum == LexError) {
+		value = new char[BufSize + 1];
+		for(int i = 0; i <= BufSize; i++)
+			((char *)value)[i] = buf[i];
+	} else if (LexNum == LexStr) {
 		value = new char[BufSize - 1];
 		for(int i = 0; i < BufSize - 2; i++)
 			((char *)value)[i] = buf[i+1];
 		((char *)value)[BufSize - 1] = 0;
-	}
-	if (LexNum == LexValInt)
-		value = new long long(strtoll(buf+1, NULL, 10));
-	if (LexNum == LexValReal)
-		value = new double(strtod(buf+1, NULL));
-	if (LexNum == LexError) {
-		value = new char[BufSize + 1];
-		for(int i = 0; i <= BufSize; i++)
-			((char *)value)[i] = buf[i];
+	} else if (LexNum == LexValInt) {
+		value = new long long(strtoll(buf, NULL, 10));
+	} else if (LexNum == LexValReal) {
+		value = new double(strtod(buf, NULL));
 	}
 	buf[0] = 0;
 	BufSize = 0;
 }
 
 Lexeme::Lexeme(int line, int num)
+	:TableIDNum(0), IdentType(Int)
 {
 	LexNum = num;
 	LineNum = line;
@@ -71,29 +56,14 @@ Lexeme::Lexeme(int line, int num)
 
 void Lexeme::Print() 
 {
-	printf("%d: %d ", LineNum, LexNum);
 	if (LexNum == LexIdent || LexNum == LexStr) {
-		printf("%s\n", (char *)value);
+		printf("%s", (char *)value);
 	} else if (LexNum == LexValInt) {
-		printf("%lld\n", *(long long *)value);
+		printf("%lld", *(long long *)value);
 	} else if (LexNum == LexValReal) {
-		printf("%f\n", *(double *)value); 
+		printf("%f", *(double *)value);
 	} else {
-		printf("\n");
-	}
-}
-
-void Lexeme::PrintInvalLex()
-{
-	printf("Error in line %d: invalid lexeme ", LineNum);
-	if (LexNum == LexIdent || LexNum == LexStr) {
-		printf("%s\n", (char *)value);
-	} else if (LexNum == LexValInt) {
-		printf("%lld\n", *(long long *)value);
-	} else if (LexNum == LexValReal) {
-		printf("%f\n", *(double *)value);
-	} else {
-		printf("%s\n", (char *)value);
+		printf("%s", TableOfWords[LexNum]);
 	}
 }
 
@@ -252,11 +222,11 @@ void Automat::ChangeState(char c)
 
 void Automat::StateH(char c)
 {
-	if (c == '#') {
+	if (Digit(c)) {
 		state = Int;
 	} else if (c == '\"') {
 		state = String;
-	} else if (c == '&' || Letter(c)) {
+	} else if (Letter(c)) {
 		state = Ident;
 	} else if (c == '=') {
 		state = Equal;
@@ -361,65 +331,46 @@ int Automat::SearchPoint()
 int Automat::GetLexNum()
 {
 	int i = 0;
-	if (buf[0] == '&')
-		return LexIdent;
-	if (buf[0] == '#') { 
+	if (Digit(buf[0])) { 
 		if (SearchPoint()) {
 			return LexValReal;
 		} else {
 		return LexValInt;
 		}
-	}
-	if (buf[0] == '/')
+	} else if (buf[0] == '/') {
 		return LexEmpty;
-	if (buf[0] == '"')
+	} else if (buf[0] == '"') {
 		return LexStr;
+	}
 	while(TableOfWords[i] != NULL) {
 		if (!strcmp(buf, TableOfWords[i]))
 			return i;
 		i++;
 	}
+	if (Letter(buf[0]))
+		return LexIdent;
 	return LexError;
 }
 
-enum {
-	InvalLex, BirthExpect, DeathExpect, NothingExpect, SemicolonExpect,
-	IdentExpect, ValIntOrIdentExpect, ValRealExpect, StrExpect, RSBExpect,
-	LParenExpect, RParenExpect, LBExpect, RBExpect, AssignExpect, CommaExpect
-};
-
-const char *TableOfErr[] = 
-{
-	"", "\"birth\"", "\"death\"", "nothing", "\";\"", "identifier",
-	"integer or identifier", "real", "string", "\"]\"", "\"(\"", "\")\"",
-	"\"{\"", "\"}\"", "\"=\"", "\",\""
-};
-
-class FlyingBug {
-public:
-	Lexeme *lex;
+class BadLex {
 	int ErrNum;
-	FlyingBug(Lexeme *l, int n) { lex = l; ErrNum = n; } 
+public:
+	BadLex(int e): ErrNum(e) {}
+	int GetErrNum() const { return ErrNum; }
 };
-
-void PrintExpect(int LineNum, const char *s)
-{
-	printf("Error in line %d: %s expected\n", LineNum, s);
-}
 
 class Parser {
 	Automat automat;
-	Lexeme *current;
+	Lexeme *current, *last;
 	int LexNum;
 	FILE *f;
 	void next();
 	void S();
 	void Action();
-	void ValIntOrIdentDesc();
-	void IntDesc();
-	void RealDesc();
-	void StringDesc();
-	void IteratorDesc();
+	void IntDesc(int AfterComma);
+	void RealDesc(int AfterComma);
+	void StringDesc(int AfterComma);
+	void IteratorDesc(int AfterComma);
 	void WhileDesc();
 	void GetDesc();
 	void PutDesc();
@@ -428,46 +379,78 @@ class Parser {
 	void ForDesc();
 	void IfElseDesc();
 	void ArrayDesc();
-	void ExpOr();
-	void ExpAnd();
-	void ExpComp();
-	void ExpAddSub();
-	void ExpMulDiv();
-	void ExpLast();
+	void ExpOr(int RParenErr, int ValOrIdentErr);
+	void ExpAnd(int RParenErr, int ValOrIdentErr);
+	void ExpComp(int RParenErr, int ValOrIdentErr);
+	void ExpAddSub(int RParenErr, int ValOrIdentErr);
+	void ExpMulDiv(int RParenErr, int ValOrIdentErr);
+	void ExpLast(int RParenErr, int ValOrIdentErr);
 	int CheckComp(int n);
+	int CheckInExp(int ErrNum);
+	void CheckIfIdent(int AfterComma, int ErrIfComma, int ErrElse); 
+	void CheckIfIdentOrVal(int val, int err);
 public:
-	Parser(): automat(), current(NULL), LexNum(0), f(0) {}
-	void analyze(FILE *file)
-	{
-		f = file;
-		try {
-			next();
-			S();
-		}
-		catch(FlyingBug &bug) {
-			if (bug.ErrNum == InvalLex) {
-				(*bug.lex).PrintInvalLex();
-			} else {
-				PrintExpect((*bug.lex).GetLineNum(), TableOfErr[bug.ErrNum]);
-			}
-			delete bug.lex;
-			return;
-		}
-		printf("Correct\n");
-	}
+	Parser(): automat(), current(0), last(0), LexNum(0), f(0) {}
+	void analyze(FILE *file);
 };
+
+void Parser::analyze(FILE *file)
+{
+	f = file;
+	try {
+		next();
+		S();
+	}
+	catch(const BadLex &err) {
+		int ErrNum = err.GetErrNum();
+		printf("Error in line %d: ", (*current).GetLineNum());
+		if (ErrNum == NothingExpect) {
+			printf("%s\n", TableOfErrors[ErrNum]);
+			return;
+		} else if (ErrNum == InvalLex) {
+			printf("invalid lexeme \"");
+		} else if (CheckInExp(ErrNum)) {
+			printf("%s after \"", TableOfErrors[ErrNum]);
+			(*last).Print();
+			printf("\" before \"");
+		} else {
+			printf("%s before \"", TableOfErrors[ErrNum]);
+		}
+		(*current).Print();
+		printf("\"\n");
+		return;
+	}
+	printf("Correct\n");
+}
+
+void Parser::next()
+{
+	char c;
+	if (last != NULL)
+		delete last;
+	last = current;
+	current = NULL;
+	do {
+		c = fgetc(f);
+		if ((current = automat.FeedChar(c)) != NULL) {
+			if (!((*current).CheckCorrect())) 
+				throw BadLex(InvalLex);
+		}
+	} while(current == NULL);
+	LexNum = (*current).GetLexNum();
+}
 
 void Parser::S()
 {
 	if (LexNum != LexBirth)
-		throw FlyingBug(current, BirthExpect);
+		throw BadLex(BirthExpect);
 	next();
 	Action();
 	if (LexNum != LexDeath)
-		throw FlyingBug(current, DeathExpect);
+		throw BadLex(DeathExpect);
 	next();
 	if (LexNum != LexEmpty)
-		throw FlyingBug(current, NothingExpect);
+		throw BadLex(NothingExpect);
 }
 
 void Parser::Action()
@@ -476,16 +459,16 @@ void Parser::Action()
 		next();
 	} else if (LexNum == LexInt) {
 		next();
-		IntDesc();
+		IntDesc(0);
 	} else if (LexNum == LexReal) {
 		next();
-		RealDesc();
+		RealDesc(0);
 	} else if (LexNum == LexString) {
 		next();
-		StringDesc();
+		StringDesc(0);
 	} else if (LexNum == LexIter) {
 		next();
-		IteratorDesc();
+		IteratorDesc(0);
 	} else if (LexNum == LexWhile) {
 		next();
 		WhileDesc();
@@ -505,91 +488,113 @@ void Parser::Action()
 		return;
 	}
 	if (LexNum != LexSemicolon)
-		throw FlyingBug(current, SemicolonExpect);
+		throw BadLex(SemicolonExpect);
 	next();
 	Action();
 }
 
-void Parser::ValIntOrIdentDesc()
+int Parser::CheckInExp(int ErrNum)
 {
-	if (LexNum == LexValInt) {
+	return (
+		ErrNum == RParenWhileExp || ErrNum == ValOrIdentWhileExp ||
+		ErrNum == RParenPutExp || ErrNum == ValOrIdentPutExp ||
+		ErrNum == RParenAssignExp || ErrNum == ValOrIdentAssignExp ||
+		ErrNum == RParenIfExp || ErrNum == ValOrIdentIfExp
+	);
+}
+
+void Parser::CheckIfIdent(int AfterComma, int ErrIfComma, int ErrElse) 
+{
+	if (LexNum != LexIdent) {
+		if (AfterComma) {
+			throw BadLex(ErrIfComma);
+		} else {
+			throw BadLex(ErrElse);
+		}
+	}
+}
+
+void Parser::CheckIfIdentOrVal(int val, int err)
+{
+	if (LexNum == val) {
 		next();
 	} else if (LexNum == LexIdent) {
 		next();
 		ArrayDesc();
 	} else {
-		throw FlyingBug(current, ValIntOrIdentExpect);
+		throw BadLex(err);
 	}
 }
 
-void Parser::IntDesc()
+void Parser::IntDesc(int AfterComma)
 {
-	if (LexNum != LexIdent)
-		throw FlyingBug(current, IdentExpect);
+	CheckIfIdent(AfterComma, IdentAfterCommaInt, IdentAfterInt);  
 	next();
 	ArrayDesc();
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenInt);
 	next();
-	ValIntOrIdentDesc();
+	CheckIfIdentOrVal(LexValInt, ValIntOrIdent);
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenInt);
 	next();
 	if (LexNum == LexComma) {
 		next();
-		IntDesc();
+		IntDesc(1);
 	}
 }
 
-void Parser::RealDesc()
+void Parser::RealDesc(int AfterComma)
 {
-	if (LexNum != LexIdent)
-		throw FlyingBug(current, IdentExpect);
+	CheckIfIdent(AfterComma, IdentAfterCommaReal, IdentAfterReal);  
 	next();
 	ArrayDesc();
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenReal);
 	next();
-	if (LexNum != LexValReal)
-		throw FlyingBug(current, ValRealExpect);
-	next();
+	if (LexNum == LexValReal || LexNum == LexValInt) {
+		next();
+	} else if (LexNum == LexIdent) {
+		next();
+		ArrayDesc();
+	} else {
+		throw BadLex(ValOrIdentReal);
+	}
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenReal);
 	next();
 	if (LexNum == LexComma) {
 		next();
-		RealDesc();
+		RealDesc(1);
 	}
 }
 
-void Parser::StringDesc()
+void Parser::StringDesc(int AfterComma)
 {
-	if (LexNum != LexIdent)
-		throw FlyingBug(current, IdentExpect);
+	CheckIfIdent(AfterComma, IdentAfterCommaStr, IdentAfterStr);  
 	next();
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenStr);
 	next();
 	if (LexNum != LexStr)
-		throw FlyingBug(current, StrExpect);
+		throw BadLex(StrExpect);
 	next();
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenStr);
 	next();
 	if (LexNum == LexComma) {
 		next();
-		StringDesc();
+		StringDesc(1);
 	}
 }
 
-void Parser::IteratorDesc()
+void Parser::IteratorDesc(int AfterComma)
 {
-	if (LexNum != LexIdent)
-		throw FlyingBug(current, IdentExpect);
+	CheckIfIdent(AfterComma, IdentAfterCommaIter, IdentAfterIter);  
 	next();
 	if (LexNum == LexComma) {
 		next();
-		IteratorDesc();
+		IteratorDesc(1);
 	}
 }
 
@@ -597,13 +602,13 @@ void Parser::ArrayDesc()
 {
 	if (LexNum == LexLSB) {
 		next();
-		ValIntOrIdentDesc();
+		CheckIfIdentOrVal(LexValInt, ValIntOrIdentArray);
 		if (LexNum == LexComma) {
 			next();
-			ValIntOrIdentDesc();
+			CheckIfIdentOrVal(LexValInt, ValIntOrIdentArraySec);
 		}
 		if (LexNum != LexRSB)
-			throw FlyingBug(current, RSBExpect);
+			throw BadLex(RSBExpect);
 		next();
 	}
 }
@@ -611,54 +616,54 @@ void Parser::ArrayDesc()
 void Parser::WhileDesc()
 {
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenWhile);
 	next();
-	ExpOr();
+	ExpOr(RParenWhileExp, ValOrIdentWhileExp);
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenWhile);
 	next();
 	if (LexNum != LexLB)
-		throw FlyingBug(current, LBExpect);
+		throw BadLex(LBWhile);
 	next();
 	Action();
 	if (LexNum != LexRB)
-		throw FlyingBug(current, RBExpect);
+		throw BadLex(RBWhile);
 	next();
 }
 
 void Parser::GetDesc()
 {
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenGet);
 	next();
 	if (LexNum != LexIdent)
-		throw FlyingBug(current, IdentExpect);
+		throw BadLex(IdentGet);
 	next();
 	ArrayDesc();
 	while(LexNum == LexComma) {
 		next();
 		if (LexNum != LexIdent)
-			throw FlyingBug(current, IdentExpect);
+			throw BadLex(IdentGetComma);
 		next();
 		ArrayDesc();
 	}
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenGet);
 	next();
 }
 
 void Parser::PutDesc()
 {
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenPut);
 	next();
-	ExpOr();
+	ExpOr(RParenPutExp, ValOrIdentPutExp);
 	while(LexNum == LexComma) {
 		next();
-		ExpOr();
+		ExpOr(RParenPutExp, ValOrIdentPutExp);
 	}
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenPut);
 	next();
 }
 
@@ -671,94 +676,94 @@ void Parser::AssignOrForDesc()
 		next();
 		ForDesc();
 	} else {
-		throw FlyingBug(current, AssignExpect);
+		throw BadLex(AssignExpect);
 	}
 }
 
 void Parser::AssignDesc()
 {
 	if (LexNum != LexAssign)
-		throw FlyingBug(current, AssignExpect);
+		throw BadLex(AssignExpect);
 	next();
 	while(LexNum == LexIdent) {
 		next();
 		ArrayDesc();
 		if (LexNum != LexAssign)
-			throw FlyingBug(current, AssignExpect);
+			throw BadLex(AssignExpect);
 		next();
 	}
-	ExpOr();
+	ExpOr(RParenAssignExp, ValOrIdentAssignExp);
 }
 
 void Parser::ForDesc()
 {
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenFor);
 	next();
-	ValIntOrIdentDesc();
+	CheckIfIdentOrVal(LexValInt, ValIntOrIdentForFirst);
 	if (LexNum != LexComma)
-		throw FlyingBug(current, CommaExpect);
+		throw BadLex(CommaForFirst);
 	next();
-	ValIntOrIdentDesc();
+	CheckIfIdentOrVal(LexValInt, ValIntOrIdentForSecond);
 	if (LexNum != LexComma)
-		throw FlyingBug(current, CommaExpect);
+		throw BadLex(CommaForSecond);
 	next();
-	ValIntOrIdentDesc();
+	CheckIfIdentOrVal(LexValInt, ValIntOrIdentForThird);
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenFor);
 	next();
 	if (LexNum != LexLB)
-		throw FlyingBug(current, LBExpect);
+		throw BadLex(LBFor);
 	next();
 	Action();
 	if (LexNum != LexRB)
-		throw FlyingBug(current, RBExpect);
+		throw BadLex(RBFor);
 	next();
 }
 		
 void Parser::IfElseDesc()
 {
 	if (LexNum != LexLParen)
-		throw FlyingBug(current, LParenExpect);
+		throw BadLex(LParenIf);
 	next();
-	ExpOr();
+	ExpOr(RParenIfExp, ValOrIdentIfExp);
 	if (LexNum != LexRParen)
-		throw FlyingBug(current, RParenExpect);
+		throw BadLex(RParenIf);
 	next();
 	if (LexNum != LexLB)
-		throw FlyingBug(current, LBExpect);
+		throw BadLex(LBIfExpect);
 	next();
 	Action();
 	if (LexNum != LexRB)
-		throw FlyingBug(current, RBExpect);
+		throw BadLex(RBIfExpect);
 	next();
 	if (LexNum == LexElse) {
 		next();
 		if (LexNum != LexLB)
-			throw FlyingBug(current, LBExpect);
+			throw BadLex(LBElseExpect);
 		next();
 		Action();
 		if (LexNum != LexRB)
-			throw FlyingBug(current, RBExpect);
+			throw BadLex(RBElseExpect);
 		next();
 	}
 }	
 
-void Parser::ExpOr()
+void Parser::ExpOr(int RParenErr, int ValOrIdentErr)
 {
-	ExpAnd();
+	ExpAnd(RParenErr, ValOrIdentErr);
 	while(LexNum == LexOr) {
 		next();
-		ExpAnd();
+		ExpAnd(RParenErr, ValOrIdentErr);
 	}
 }
 
-void Parser::ExpAnd()
+void Parser::ExpAnd(int RParenErr, int ValOrIdentErr)
 {
-	ExpComp();
+	ExpComp(RParenErr, ValOrIdentErr);
 	while(LexNum == LexAnd) {
 		next();
-		ExpComp();
+		ExpComp(RParenErr, ValOrIdentErr);
 	}
 }
 
@@ -767,34 +772,37 @@ int Parser::CheckComp(int n)
 	return n==LexLT||n==LexLE||n==LexGT||n==LexGE||n==LexEq||n==LexNotEq;
 }
 
-void Parser::ExpComp()
+void Parser::ExpComp(int RParenErr, int ValOrIdentErr)
 {
-	ExpAddSub();
+	ExpAddSub(RParenErr, ValOrIdentErr);
 	while(CheckComp(LexNum)) {
 		next();
-		ExpAddSub();
+		ExpAddSub(RParenErr, ValOrIdentErr);
 	}
 }
 
-void Parser::ExpAddSub()
+void Parser::ExpAddSub(int RParenErr, int ValOrIdentErr)
 {
-	ExpMulDiv();
+	if (LexNum == LexAdd || LexNum == LexSub) {
+		next();
+	}
+	ExpMulDiv(RParenErr, ValOrIdentErr);
 	while(LexNum == LexAdd || LexNum == LexSub) {
 		next();
-		ExpMulDiv();
+		ExpMulDiv(RParenErr, ValOrIdentErr);
 	}
 }
 
-void Parser::ExpMulDiv()
+void Parser::ExpMulDiv(int RParenErr, int ValOrIdentErr)
 {
-	ExpLast();
+	ExpLast(RParenErr, ValOrIdentErr);
 	while(LexNum == LexMul || LexNum == LexDiv) {
 		next();
-		ExpLast();
+		ExpLast(RParenErr, ValOrIdentErr);
 	}
 }
 
-void Parser::ExpLast()
+void Parser::ExpLast(int RParenErr, int ValOrIdentErr)
 {
 	if (LexNum == LexIdent) {
 		next();
@@ -803,32 +811,16 @@ void Parser::ExpLast()
 		next();
 	} else if (LexNum == LexNeg) {
 		next();
-		ExpLast();
+		ExpLast(RParenErr, ValOrIdentErr);
 	} else if (LexNum == LexLParen) {
 		next();
-		ExpOr();
+		ExpOr(RParenErr, ValOrIdentErr);
 		if (LexNum != LexRParen)
-			throw FlyingBug(current, RParenExpect);
+			throw BadLex(RParenErr);
 		next();
 	} else {
-		throw FlyingBug(current, ValIntOrIdentExpect);
+		throw BadLex(ValOrIdentErr);
 	}
-}
-
-void Parser::next()
-{
-	char c;
-	if (current != NULL)
-		delete current;
-	current = NULL;
-	do {
-		c = fgetc(f);
-		if ((current = automat.FeedChar(c)) != NULL) {
-			if (!((*current).CheckCorrect())) 
-				throw FlyingBug(current, InvalLex);
-		}
-	} while(current == NULL);
-	LexNum = (*current).GetLexNum();
 }
 
 int main(int argc, char **argv)
