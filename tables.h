@@ -1,6 +1,6 @@
 enum {
 	LexEmpty, LexIdent, LexValInt, LexValReal, LexStr, LexBirth, LexDeath,
-	LexDie, LexInt, LexReal, LexString, LexIter, LexIf, LexElse, LexWhile,
+	LexDie, LexInt, LexReal, LexString, LexIf, LexElse, LexWhile,
 	LexOr, LexAnd, LexPut, LexGet, LexLB, LexRB, LexLSB, LexRSB, LexLParen,
 	LexRParen, LexComma, LexColon, LexSemicolon, LexAdd, LexSub, LexMul,
 	LexDiv, LexAssign, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexNeg,
@@ -10,7 +10,7 @@ enum {
 const char *TableOfWords[] = 
 {
 	"", "", "", "", "", "birth", "death", "die", "int", "real", "string",
-	"iterator",	"if", "else", "while", "or", "and", "put", "get", "{", "}",
+	"if", "else", "while", "or", "and", "put", "get", "{", "}",
 	"[", "]", "(", ")", ",", ":", ";", "+", "-", "*", "/", "=", "<", "<=",
 	">", ">=", "==", "=!", "!", NULL
 };
@@ -20,7 +20,7 @@ enum {
 	IdentAfterInt, IdentAfterCommaInt, LParenInt, ValIntOrIdent, RParenInt,
 	IdentAfterReal, IdentAfterCommaReal, LParenReal, ValOrIdentReal, 
 	RParenReal,	IdentAfterStr, IdentAfterCommaStr, LParenStr, StrExpect, 
-	RParenStr, IdentAfterIter, IdentAfterCommaIter, ValIntOrIdentArray,
+	RParenStr, ValIntOrIdentArray,
 	ValIntOrIdentArraySec, RSBExpect, LParenWhile, RParenWhileExp, 
 	ValOrIdentWhileExp, RParenWhile, LBWhile, RBWhile, LParenGet, IdentGet,
 	IdentGetComma, RParenGet, LParenPut, RParenPutExp, ValOrIdentPutExp,
@@ -53,8 +53,6 @@ const char *TableOfErrors[] =
 	"\"(\" expected after identifier in description of string",
 	"string expected after \"(\" in description of string",
 	"\")\" expected after initial value in description of string",
-	"identifier expected after \"iterator\"",
-	"identifier expected after \",\" in description of iterator",
 	"identifier or int value expected after \"[\" in description of array",
 	"identifier or int value expected after \",\" in description of array",
 	"\"]\" expected after the dimension in the end of description of array",
