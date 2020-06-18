@@ -904,25 +904,29 @@ public:
 			throw new IpnExNotFound(line, InAssign, iVarAddr->Get());
 		} else if (type == Real) {
 			if (iInt) {
+				long long res = iInt->Get();
 				SetValue<double, IpnInt *>(stack, VarList, iVarAddr, iInt);
-				return new IpnInt(iInt->Get(), GetLineNum());
+				return new IpnInt(res, GetLineNum());
 			} else if (iReal) {
+				double res = iReal->Get();
 				SetValue<double, IpnReal *>(stack, VarList, iVarAddr, iReal);
-				return new IpnReal(iReal->Get(), GetLineNum());
+				return new IpnReal(res, GetLineNum());
 			} else {
 				throw new IpnExNotIntOrReal(operand2->GetLineNum(), InAssign);
 			}
 		} else if (type == Int) {
 			if (iInt) {
+				long long res = iInt->Get();
 				SetValue<long long, IpnInt *>(stack, VarList, iVarAddr, iInt);
-				return new IpnInt(iInt->Get(), GetLineNum());
+				return new IpnInt(res, GetLineNum());
 			} else {
 				throw new IpnExNotInt(operand2->GetLineNum(), InAssign);
 			}
 		} else if (type == String) {
 			if (iString) {
+				char *s = strdup(iString->Get());
 				SetString(VarList, iVarAddr, iString);
-				return new IpnString(iString->Get(), GetLineNum());
+				return new IpnString(s, GetLineNum());
 			} else {
 				throw new IpnExNotStr(operand2->GetLineNum(), InAssign);
 			}
