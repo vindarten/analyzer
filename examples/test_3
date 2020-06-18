@@ -3,6 +3,6 @@ birth
 	real r[2](19.0)
 	string str("Hello, world!")
 	put(a, b[1, 1], r[1], str)
-	b[1, 1] := a = 5;
-	put(a, b[1, 1])
+	r[0] = (5+ 4*(5 > 6))/3.0;
+	put(r[0])  
 death

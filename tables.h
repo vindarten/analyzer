@@ -2,18 +2,29 @@ enum {
 	LexEmpty, LexIdent, LexValInt, LexValReal, LexStr, LexBirth, LexDeath,
 	LexDie, LexInt, LexReal, LexString, 
 	LexIf, LexElse, LexWhile, LexPut, LexGet, LexComma, LexSemicolon,
-	LexAssign, LexMultiAssign,
+	LexAssign,
 	LexLB, LexRB, LexLSB, LexRSB, LexLParen, LexRParen,
 	LexOr, LexAnd, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexAdd, LexSub,
-	LexMul, LexDiv, LexNeg,	LexError
+	LexMul, LexDiv, LexNeg,
+	LexProd, LexSell, LexBuy, LexBuild,
+	LexMinRawPrice, LexMaxProdPrice, LexMaxRaw, LexMaxProd,
+	LexMyProd, LexMyRaw, LexMyFact, LexMyMoney,
+	LexPlayerProd, LexPlayerRaw, LexPlayerFact, LexPlayerMoney,
+	LexPrintMyInfo, LexPrintMarketInfo, LexPrintPlayerInfo,
+	LexError
 };
 
 const char *TableOfWords[] = 
 {
 	"", "", "", "", "", "birth", "death", "die", "int", "real", "string",
-	"if", "else", "while", "put", "get", ",", ";", "=", ":=",
+	"if", "else", "while", "put", "get", ",", ";", "=",
 	"{", "}", "[", "]", "(", ")",
 	"or", "and", "<", "<=", ">", ">=", "==", "=!", "+", "-", "*", "/", "!",
+	"prod", "sell", "buy", "build",
+	"MinRawPrice", "MaxProdPrice", "MaxRaw", "MaxProd",
+	"MyProd", "MyRaw", "MyFact", "MyMoney",
+	"PlayerProd", "PlayerRaw", "PlayerFact", "PlayerMoney",
+	"PrintMyInfo", "PrintMarketInfo", "PrintPlayerInfo",
 	NULL
 };
 
@@ -39,7 +50,19 @@ enum {
 	RParenIfExp, ValOrIdentIfExp, RParenIf, LBIfExpect, RBIfExpect,
 	LBElseExpect, RBElseExpect,
 	RpArrFstExp, ValArrFstExp, RpArrScdExp, ValArrScdExp,
-	RpArrFstAsgn, ValArrFstAsgn, RpArrScdAsgn, ValArrScdAsgn
+	RpArrFstAsgn, ValArrFstAsgn, RpArrScdAsgn, ValArrScdAsgn,
+	RParenExp, ValOrIdentExp, LvalueReq, 
+	RParenProdExp, ValOrIdentProdExp,
+	RParenSellFstExp, ValOrIdentSellFstExp,
+	RParenSellScdExp, ValOrIdentSellScdExp,
+	RParenBuyFstExp, ValOrIdentBuyFstExp,
+	RParenBuyScdExp, ValOrIdentBuyScdExp,
+	RParenBuildExp, ValOrIdentBuildExp,
+	RParenPrintPlayerInfoExp, ValOrIdentPrintPlayerInfoExp,
+	RParenPlayerProdExp, ValOrIdentPlayerProdExp,
+	RParenPlayerRawExp, ValOrIdentPlayerRawExp,
+	RParenPlayerFactExp, ValOrIdentPlayerFactExp,
+	RParenPlayerMoneyExp, ValOrIdentPlayerMoneyExp
 };
 
 const char *TableOfErrors[] = 
@@ -48,7 +71,7 @@ const char *TableOfErrors[] =
 	"\"birth\" expected in the beginning of the program",
 	"\"death\" expected in the end of the program",
 	"lexeme after end of the program",
-	"\";\" expected in the end of statement",
+	"\";\" expected in the end of expression",
 	"identifier expected in description of integer",
 	"\")\" expected in the condition of first dimension of array "
 	"in description of integer",
@@ -126,7 +149,7 @@ const char *TableOfErrors[] =
 	"\")\" expected in the condition of second dimension of array "
 	"in description of expression",
 	"identifier or int or real value expected in the condition of "
-	"second dimension of array in description of expression"
+	"second dimension of array in description of expression",
 	"\")\" expected in the condition of first dimension of array "
 	"in description of assignment",
 	"identifier or int or real value expected in the condition of "
@@ -134,5 +157,30 @@ const char *TableOfErrors[] =
 	"\")\" expected in the condition of second dimension of array "
 	"in description of assignment",
 	"identifier or int or real value expected in the condition of "
-	"second dimension of array in description of assignment"
+	"second dimension of array in description of assignment",
+	"\")\" expected in the expression",
+	"identifier or int or real value expected in the expression",
+	"lvalue required as left operand of assignment",
+	"\")\" expected in the argument of \"prod\"",
+	"identifier or int value expected in the argument of \"prod\"",
+	"\")\" expected in the first argument of \"sell\"",
+	"identifier or int value expected in the first argument of \"sell\"",
+	"\")\" expected in the second argument of \"sell\"",
+	"identifier or int value expected in the second argument of \"sell\"",
+	"\")\" expected in the first argument of \"buy\"",
+	"identifier or int value expected in the first argument of \"buy\"",
+	"\")\" expected in the second argument of \"buy\"",
+	"identifier or int value expected in the second argument of \"buy\""
+	"\")\" expected in the argument of \"build\"",
+	"identifier or int value expected in the argument of \"build\"",
+	"\")\" expected in the argument of \"PrintPlayerInfo\"",
+	"identifier or int value expected in the argument of \"PrintPlayerInfo\"",
+	"\")\" expected in the argument of \"PlayerProd\"",
+	"identifier or int value expected in the argument of \"PlayerProd\"",
+	"\")\" expected in the argument of \"PlayerRaw\"",
+	"identifier or int value expected in the argument of \"PlayerRaw\"",
+	"\")\" expected in the argument of \"PlayerFact\"",
+	"identifier or int value expected in the argument of \"PlayerFact\"",
+	"\")\" expected in the argument of \"PlayerMoney\"",
+	"identifier or int value expected in the argument of \"PlayerMoney\""
 };

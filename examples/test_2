@@ -2,21 +2,7 @@ birth
 	int a[5, 5+3*2](9/3)
 	real b[4](5), Array[3, 8](6.5)
 	string str("Hello, world!")
-	b[2] := a[3, 5] := a[1, 2] = 4;
+	b[2] = a[3, 5] = a[1, 2] = 4;
 	str = "Help me!";
-	if(4<5) {
-		int c(9)
-	} else {
-		int k(8)
-	}
-	int i(0)
-	while(i < 2) {
-		real d(9.0)
-		i = i + 1;
-	}
-	while(i < 2) {
-		real d(9.0)
-		i = i + 1;
-	}
-	a[1, 1] = 5 + 1.0;
+	put(str, b[2], a[3, 5], a[1, 2])
 death

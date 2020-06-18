@@ -373,7 +373,7 @@ enum {InFstDim, InScdDim, InVarDesc, InAssign, InAddFst, InAddScd,
 	InLessEFst, InLessEScd, InGreatFst, InGreatScd,
 	InGreatEFst, InGreatEScd, InEqualFst, InEqualScd,
 	InNotEqualFst, InNotEqualScd, InNeg, InOpGoFalse, InPut,
-	InSemicolon, InVar, InOpGo
+	InSemicolon, InVar, InOpGo, InTakeValue
 };
 
 class IpnEx {
@@ -411,6 +411,14 @@ public:
 		}
 		printf("\n");
 	}
+};
+
+class IpnExNotIntGameAct: public IpnEx {
+public:
+	IpnExNotIntGameAct(int l = 0): IpnEx(l) {}
+	virtual ~IpnExNotIntGameAct() {}
+	virtual void PrintError() const
+		{ printf("operand in game action is not integer type\n"); }
 };
 
 class IpnExNotIntOrReal: public IpnEx {
@@ -596,6 +604,8 @@ public:
 	{
 		if (where == InAssign) {
 			printf("operand in assignment is not address of variable ");
+		} else if (where == InTakeValue) {
+			printf("operand in taking of value is not address of variable ");
 		}
 		printf("\n");
 	}
@@ -609,12 +619,7 @@ struct VarElem {
 	void *value;
 	VarElem *next;
 	VarElem(char *n, int t, void *v, int f, int s, int l)
-		: type(t), FstDim(f), ScdDim(s), level(l), name(n), value(v)
-	{
-#ifdef DEBUGGING
-		printf("%s %d %d\n", name, FstDim, ScdDim);
-#endif
-	}
+		: type(t), FstDim(f), ScdDim(s), level(l), name(n), value(v) {}
 };
 
 struct IpnItem {
@@ -633,6 +638,7 @@ public:
 		IpnItem **stack, IpnItem **CurCmd, VarElem **VarList
 	) const = 0;
 	int GetLineNum() const { return LineNum; }
+	virtual void Print() const = 0;
 protected:
 	void Push(IpnItem **stack, IpnElem *elem) const
 	{
@@ -667,20 +673,38 @@ public:
 	}
 };
 
-template <class T>
-class IpnGenericConst: public IpnConst {
-	T value;
+class IpnInt: public IpnConst {
+	long long value;
 public:
-	IpnGenericConst(const T v, int l = 0): IpnConst(l), value(v) {}
-	virtual ~IpnGenericConst() {}
+	IpnInt(const long long v, int l = 0): IpnConst(l), value(v) {}
+	virtual ~IpnInt() {}
 	virtual IpnElem *Clone() const
-		{ return new IpnGenericConst<T>(value, GetLineNum()); }
-	T Get() const { return value; }
+		{ return new IpnInt(value, GetLineNum()); }
+	long long Get() const { return value; }
+	void Print() const { printf("IpnInt %lld\n", value); }
 };
 
-typedef IpnGenericConst<long long> IpnInt;
-typedef IpnGenericConst<double> IpnReal;
-typedef IpnGenericConst<IpnItem *> IpnLabel;
+class IpnReal: public IpnConst {
+	double value;
+public:
+	IpnReal(const double v, int l = 0): IpnConst(l), value(v) {}
+	virtual ~IpnReal() {}
+	virtual IpnElem *Clone() const
+		{ return new IpnReal(value, GetLineNum()); }
+	double Get() const { return value; }
+	void Print() const { printf("IpnReal %f\n", value); }
+};
+
+class IpnLabel: public IpnConst {
+	IpnItem *value;
+public:
+	IpnLabel(IpnItem *v, int l = 0): IpnConst(l), value(v) {}
+	virtual ~IpnLabel() {}
+	virtual IpnElem *Clone() const
+		{ return new IpnLabel(value, GetLineNum()); }
+	IpnItem *Get() const { return value; }
+	void Print() const { printf("IpnLabel "); value->elem->Print(); }
+};
 
 class IpnEndOfArg: public IpnConst {
 public:
@@ -688,6 +712,7 @@ public:
 	virtual ~IpnEndOfArg() {}
 	virtual IpnEndOfArg *Clone() const
 		{ return new IpnEndOfArg(GetLineNum()); }
+	void Print() const { printf("IpnEndOfArg\n"); }
 };
 
 class IpnString: public IpnConst {
@@ -699,6 +724,7 @@ public:
 	virtual IpnString *Clone() const
 		{ return new IpnString(str, GetLineNum()); }
 	char *Get() const { return str; }
+	void Print() const { printf("IpnString %s\n", str); }
 };
 
 class IpnVarAddr: public IpnConst {
@@ -710,6 +736,7 @@ public:
 	virtual IpnVarAddr *Clone() const
 		{ return new IpnVarAddr(str, GetLineNum()); }
 	char *Get() const { return str; }
+	void Print() const { printf("IpnVarAddr %s\n", str); }
 };
 
 class IpnVarOrAssign: public IpnElem {
@@ -739,9 +766,6 @@ protected:
 		}
 		delete operand1;
 		delete operand2;
-#ifdef DEBUGGING
-		printf("?%d %d\n", FstDim, ScdDim);
-#endif
 		if (FstDim < 0 || ScdDim < 0)
 			throw new IpnExSegFault(GetLineNum());
 		if (inDesc) {
@@ -761,10 +785,9 @@ public:
 	}
 };
 
-class IpnVar: public IpnVarOrAssign {
-	char *name;
+class IpnTakeValue: public IpnVarOrAssign {
 	template <class T>
-	T GetValue(VarElem **VarList, int FstDim, int ScdDim) const
+	T GetValue(VarElem **VarList, int FstDim, int ScdDim, char *name) const
 	{
 		VarElem *cur = *VarList;
 		while(cur != 0) {
@@ -773,6 +796,7 @@ class IpnVar: public IpnVarOrAssign {
 					throw new IpnExSegFault(GetLineNum(), name);
 				} else {
 					int dim = FstDim*(cur->ScdDim) + ScdDim;
+					delete [] name;
 					return ((T *)(cur->value))[dim];
 				}
 			}
@@ -780,34 +804,43 @@ class IpnVar: public IpnVarOrAssign {
 		}
 		return 0;
 	}
-	char *GetString(VarElem **VarList) const
+	char *GetString(VarElem **VarList, char *name) const
 	{
 		VarElem *cur = *VarList;
 		while(cur != 0) {
-			if (!strcmp(cur->name, name))
+			if (!strcmp(cur->name, name)) {
+				delete [] name;
 				return (char *)(cur->value);
+			}
 			cur = cur->next;
 		}
 		return 0;
 	}
 public:
-	IpnVar(char *n, int l = 0): IpnVarOrAssign(l) { name = strdup(n); }
-	virtual ~IpnVar() { delete [] name; }
+	IpnTakeValue(int l = 0): IpnVarOrAssign(l) {}
+	virtual ~IpnTakeValue() {}
+	void Print() const { printf("IpnTakeValue\n"); }
 	virtual IpnElem *EvaluateFun(IpnItem **stack, VarElem **VarList) const
 	{
+		IpnElem *operand = Pop(stack);
+		IpnVarAddr *iVarAddr = dynamic_cast<IpnVarAddr*>(operand);
+		if (!iVarAddr)
+			throw new IpnExNotVarAddr(operand->GetLineNum(), InTakeValue);
+		char *name = strdup(iVarAddr->Get());
+		delete operand;
 		int FstDim, ScdDim;
 		GetDims(stack, FstDim, ScdDim, 0);
 		int type = GetType(VarList, name);
 		if (type == NotFound) {
 			throw new IpnExNotFound(GetLineNum(), InVar, name);
 		} else if (type == Int) {
-			return new IpnInt(GetValue<long long>(VarList, FstDim, ScdDim),
-				GetLineNum());
+			long long res = GetValue<long long>(VarList, FstDim, ScdDim, name);
+			return new IpnInt(res, GetLineNum());
 		} else if (type == Real) {
-			return new IpnReal(GetValue<double>(VarList, FstDim, ScdDim),
-				GetLineNum());
+			double res = GetValue<double>(VarList, FstDim, ScdDim, name);
+			return new IpnReal(res, GetLineNum());
 		} else {
-			return new IpnString(GetString(VarList), GetLineNum());
+			return new IpnString(GetString(VarList, name), GetLineNum());
 		}
 	}
 };
@@ -845,9 +878,6 @@ class IpnAssign: public IpnVarOrAssign {
 			if (!strcmp(cur->name, name)) {
 				delete [] (char *)(cur->value);
 				cur->value = strdup(iString->Get());
-#ifdef DEBUGGING
-				printf("%s\n", (char *)(cur->value));
-#endif
 				delete VarAddr;
 				delete iString;
 				return;
@@ -856,6 +886,7 @@ class IpnAssign: public IpnVarOrAssign {
 		}
 	}
 public:
+	void Print() const { printf("IpnAssign\n"); }
 	IpnAssign(int l = 0): IpnVarOrAssign(l) {}
 	virtual ~IpnAssign() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack, VarElem **VarList) const
@@ -922,6 +953,7 @@ class IpnVarDesc: public IpnVarOrAssign {
 		considered = 1;
 	}
 public:
+	void Print() const { printf("IpnVarDesc %s\n", name); }
 	IpnVarDesc(char *n, int t, int l = 0)
 		: IpnVarOrAssign(l), type(t), FstDim(0), ScdDim(0), 
 		considered(0), value(0)
@@ -951,9 +983,6 @@ public:
 				if (!iInt)
 					throw new IpnExNotInt(operand3->GetLineNum(), InVarDesc);
 				value = new long long[FstDim * ScdDim];
-#ifdef DEBUGGING
-				printf("%lld\n", iInt->Get());
-#endif
 				for(int i = 0; i < FstDim * ScdDim; i++)
 					((long long *)value)[i] = iInt->Get();
 			} else if (type == Real) {
@@ -962,14 +991,8 @@ public:
 				double InitValue;
 				if (iInt) {
 					InitValue = iInt->Get();
-#ifdef DEBUGGING
-					printf("%lld\n", iInt->Get());
-#endif
 				} else if (iReal) {
 					InitValue = iReal->Get();
-#ifdef DEBUGGING
-					printf("%f\n", iReal->Get());
-#endif
 				} else {
 					int line = operand3->GetLineNum();
 					throw new IpnExNotIntOrReal(line, InVarDesc);
@@ -984,9 +1007,6 @@ public:
 					throw new IpnExNotStr(line, InVar);
 				}
 				value = strdup(iString->Get());
-#ifdef DEBUGGING
-				printf("%s\n", (char*)value);
-#endif
 			}
 			if (SearchName(*VarList))
 				throw new IpnExRedec(GetLineNum(), InVarDesc, name);
@@ -1009,117 +1029,249 @@ public:
 	}
 };
 
-#define CLASSARITHMETICOPERATION(ClassName, oper, ExOper1, ExOper2)\
-class ClassName: public IpnFunction {\
-	void DelAndThrow(IpnElem *OperDel, IpnElem *OperThrow, int ExOper) const\
-	{\
-		delete OperDel;\
-		throw new IpnExNotIntOrReal(OperThrow->GetLineNum(), ExOper);\
-	}\
-	double Check(IpnInt *iInt, IpnElem *OpDel, IpnElem *OpTh, int ExOp) const\
-	{\
-		if (iInt) {\
-			return iInt->Get();\
-		} else {\
-			DelAndThrow(OpDel, OpTh, ExOp);\
-		}\
-		return 0;\
-	}\
-public:\
-	ClassName(int l = 0): IpnFunction(l) {}\
-	virtual ~ClassName() {}\
-	virtual IpnElem *EvaluateFun(IpnItem **stack) const\
-	{\
-		IpnElem *operand2 = Pop(stack), *operand1 = Pop(stack);\
-		long long OneIsReal = 0, ResInt;\
-		double ResReal;\
-		IpnInt *iInt1 = dynamic_cast<IpnInt*>(operand1);\
-		IpnInt *iInt2 = dynamic_cast<IpnInt*>(operand2);\
-		IpnReal *iReal1 = dynamic_cast<IpnReal*>(operand1);\
-		IpnReal *iReal2 = dynamic_cast<IpnReal*>(operand2);\
-		if (iReal1 || iReal2) {\
-			OneIsReal = 1;\
-			if (iReal1 && iReal2) {\
-				ResReal = iReal1->Get() oper iReal2->Get();\
-			} else if (iReal1) {\
-				double r = iReal1->Get();\
-				ResReal = r oper Check(iInt2,operand1,operand2,ExOper2);\
-			} else if (iReal2) {\
-				double r = iReal2->Get();\
-				ResReal = r oper Check(iInt1,operand2,operand1,ExOper1);\
-			}\
-		} else if (iInt1 && iInt2) {\
-			ResInt = iInt1->Get() oper iInt2->Get();\
-		} else if (!iInt1) {\
-			DelAndThrow(operand2, operand1, ExOper1);\
-		} else {\
-			DelAndThrow(operand1, operand2, ExOper2);\
-		}\
-		delete operand1;\
-		delete operand2;\
-		if (OneIsReal) {\
-			return new IpnReal(ResReal, GetLineNum());\
-		} else {\
-			return new IpnInt(ResInt, GetLineNum());\
-		}\
-	}\
-};\
+class IpnArithmeticOperation: public IpnFunction {
+public:
+	IpnArithmeticOperation(int l = 0): IpnFunction(l) {}
+	virtual ~IpnArithmeticOperation() {}
+	virtual long long CalcInt(long long x, long long y) const = 0;
+	virtual double CalcReal(double x, double y) const = 0;
+	virtual void ThrowFst(int LineNum) const = 0;
+	virtual void ThrowScd(int LineNum) const = 0;
+	virtual IpnElem *EvaluateFun(IpnItem **stack) const
+	{
+		IpnElem *operand2 = Pop(stack), *operand1 = Pop(stack);
+		long long OneIsReal = 0, ResInt;
+		double ResReal;
+		IpnInt *iInt1 = dynamic_cast<IpnInt*>(operand1);
+		IpnInt *iInt2 = dynamic_cast<IpnInt*>(operand2);
+		IpnReal *iReal1 = dynamic_cast<IpnReal*>(operand1);
+		IpnReal *iReal2 = dynamic_cast<IpnReal*>(operand2);
+		if (iReal1 || iReal2) {
+			OneIsReal = 1;
+			if (iReal1 && iReal2) {
+				ResReal = CalcReal(iReal1->Get(), iReal2->Get());
+			} else if (iReal1) {
+				if (iInt2) {
+					ResReal = CalcReal(iReal1->Get(), iInt2->Get());
+				} else {
+					ThrowScd(operand2->GetLineNum());
+				}
+			} else if (iReal2) {
+				if (iInt1) {
+					ResReal = CalcReal(iInt1->Get(), iReal2->Get());
+				} else {
+					ThrowFst(operand1->GetLineNum());
+				}
+			}
+		} else if (iInt1 && iInt2) {
+			ResInt = CalcInt(iInt1->Get(), iInt2->Get());
+		} else if (!iInt1) {
+			ThrowFst(operand1->GetLineNum());
+		} else {
+			ThrowScd(operand2->GetLineNum());
+		}
+		delete operand1;
+		delete operand2;
+		if (OneIsReal) {
+			return new IpnReal(ResReal, GetLineNum());
+		} else {
+			return new IpnInt(ResInt, GetLineNum());
+		}
+	}
+};
 
-CLASSARITHMETICOPERATION(IpnAdd, +, InAddFst, InAddScd);
-CLASSARITHMETICOPERATION(IpnSub, -, InSubFst, InSubScd);
-CLASSARITHMETICOPERATION(IpnMul, *, InMulFst, InMulScd);
-CLASSARITHMETICOPERATION(IpnDiv, /, InDivFst, InDivScd);
+class IpnAdd: public IpnArithmeticOperation {
+public:
+	IpnAdd(int l = 0): IpnArithmeticOperation(l) {}
+	virtual ~IpnAdd() {}
+	void Print() const { printf("IpnAdd\n"); }
+	long long CalcInt(long long x, long long y) const { return x + y; }
+	double CalcReal(double x, double y) const { return x + y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InAddFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InAddScd); }
+};
 
-#define CLASSLOGICALOPERATION(ClassName, oper, ExOper1, ExOper2)\
-class ClassName: public IpnFunction {\
-public:\
-	ClassName(int l = 0): IpnFunction(l) {}\
-	virtual ~ClassName() {}\
-	virtual IpnElem *EvaluateFun(IpnItem **stack) const\
-	{\
-		IpnElem *operand2 = Pop(stack);\
-		long long ret;\
-		double res;\
-		IpnInt *iInt2 = dynamic_cast<IpnInt*>(operand2);\
-		IpnReal *iReal2 = dynamic_cast<IpnReal*>(operand2);\
- 		if (iReal2 || iInt2) {\
-			if (iReal2) {\
-				res = iReal2->Get();\
-			} else {\
-				res = iInt2->Get();\
-			}\
-		} else {\
-			throw new IpnExNotIntOrReal(operand2->GetLineNum(), ExOper2);\
-		}\
-		delete operand2;\
-		IpnElem *operand1 = Pop(stack);\
-		IpnInt *iInt1 = dynamic_cast<IpnInt*>(operand1);\
-		IpnReal *iReal1 = dynamic_cast<IpnReal*>(operand1);\
- 		if (iReal1 || iInt1) {\
-			if (iReal1) {\
-				ret = iReal1->Get() oper res;\
-			} else {\
-				ret = iInt1->Get() oper res;\
-			}\
-		} else {\
-			throw new IpnExNotIntOrReal(operand1->GetLineNum(), ExOper1);\
-		}\
-		delete operand1;\
-		return new IpnInt(ret, GetLineNum());\
-	}\
-};\
+class IpnSub: public IpnArithmeticOperation {
+public:
+	IpnSub(int l = 0): IpnArithmeticOperation(l) {}
+	virtual ~IpnSub() {}
+	void Print() const { printf("IpnSub\n"); }
+	long long CalcInt(long long x, long long y) const { return x - y; }
+	double CalcReal(double x, double y) const { return x - y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InSubFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InSubScd); }
+};
 
-CLASSLOGICALOPERATION(IpnOr, ||, InOrFst, InOrScd);
-CLASSLOGICALOPERATION(IpnAnd, &&, InAndFst, InAndScd);
-CLASSLOGICALOPERATION(IpnLess, <, InLessFst, InLessScd);
-CLASSLOGICALOPERATION(IpnLessE, <=, InLessEFst, InLessEScd);
-CLASSLOGICALOPERATION(IpnGreat, >, InGreatFst, InGreatScd);
-CLASSLOGICALOPERATION(IpnGreatE, >=, InGreatEFst, InGreatEScd);
-CLASSLOGICALOPERATION(IpnEqual, ==, InEqualFst, InEqualScd);
-CLASSLOGICALOPERATION(IpnNotEqual, !=, InNotEqualFst, InNotEqualScd);
+class IpnMul: public IpnArithmeticOperation {
+public:
+	IpnMul(int l = 0): IpnArithmeticOperation(l) {}
+	virtual ~IpnMul() {}
+	void Print() const { printf("IpnMul\n"); }
+	long long CalcInt(long long x, long long y) const { return x * y; }
+	double CalcReal(double x, double y) const { return x * y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InMulFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InMulScd); }
+};
+
+class IpnDiv: public IpnArithmeticOperation {
+public:
+	IpnDiv(int l = 0): IpnArithmeticOperation(l) {}
+	virtual ~IpnDiv() {}
+	void Print() const { printf("IpnDiv\n"); }
+	long long CalcInt(long long x, long long y) const { return x / y; }
+	double CalcReal(double x, double y) const { return x / y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InDivFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InDivScd); }
+};
+
+class IpnLogicalOperation: public IpnFunction {
+public:
+	IpnLogicalOperation(int l = 0): IpnFunction(l) {}
+	virtual ~IpnLogicalOperation() {}
+	virtual long long Calc(double x, double y) const = 0;
+	virtual void ThrowFst(int LineNum) const = 0;
+	virtual void ThrowScd(int LineNum) const = 0;
+	virtual IpnElem *EvaluateFun(IpnItem **stack) const
+	{
+		IpnElem *operand2 = Pop(stack);
+		long long ret;
+		double res;
+		IpnInt *iInt2 = dynamic_cast<IpnInt*>(operand2);
+		IpnReal *iReal2 = dynamic_cast<IpnReal*>(operand2);
+ 		if (iReal2 || iInt2) {
+			if (iReal2) {
+				res = iReal2->Get();
+			} else {
+				res = iInt2->Get();
+			}
+		} else {
+			ThrowScd(operand2->GetLineNum());
+		}
+		delete operand2;
+		IpnElem *operand1 = Pop(stack);
+		IpnInt *iInt1 = dynamic_cast<IpnInt*>(operand1);
+		IpnReal *iReal1 = dynamic_cast<IpnReal*>(operand1);
+ 		if (iReal1 || iInt1) {
+			if (iReal1) {
+				ret = Calc(iReal1->Get(), res);
+			} else {
+				ret = Calc(iInt1->Get(), res);
+			}
+		} else {
+			ThrowFst(operand1->GetLineNum());
+		}
+		delete operand1;
+		return new IpnInt(ret, GetLineNum());
+	}
+};
+
+class IpnOr: public IpnLogicalOperation {
+public:
+	IpnOr(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnOr() {}
+	void Print() const { printf("IpnOr\n"); }
+	long long Calc(double x, double y) const { return x || y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InOrFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InOrScd); }
+};
+
+class IpnAnd: public IpnLogicalOperation {
+public:
+	IpnAnd(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnAnd() {}
+	void Print() const { printf("IpnAnd\n"); }
+	long long Calc(double x, double y) const { return x && y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InAndFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InAndScd); }
+};
+
+class IpnLess: public IpnLogicalOperation {
+public:
+	IpnLess(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnLess() {}
+	void Print() const { printf("IpnLess\n"); }
+	long long Calc(double x, double y) const { return x < y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InLessFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InLessScd); }
+};
+
+class IpnLessE: public IpnLogicalOperation {
+public:
+	IpnLessE(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnLessE() {}
+	void Print() const { printf("IpnLessE\n"); }
+	long long Calc(double x, double y) const { return x <= y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InLessEFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InLessEScd); }
+};
+
+class IpnGreat: public IpnLogicalOperation {
+public:
+	IpnGreat(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnGreat() {}
+	void Print() const { printf("IpnGreat\n"); }
+	long long Calc(double x, double y) const { return x > y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InGreatFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InGreatScd); }
+};
+
+class IpnGreatE: public IpnLogicalOperation {
+public:
+	IpnGreatE(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnGreatE() {}
+	void Print() const { printf("IpnGreatE\n"); }
+	long long Calc(double x, double y) const { return x >= y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InGreatEFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InGreatEScd); }
+};
+
+class IpnEqual: public IpnLogicalOperation {
+public:
+	IpnEqual(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnEqual() {}
+	void Print() const { printf("IpnEqual\n"); }
+	long long Calc(double x, double y) const { return x == y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InEqualFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InEqualScd); }
+};
+
+class IpnNotEqual: public IpnLogicalOperation {
+public:
+	IpnNotEqual(int l = 0): IpnLogicalOperation(l) {}
+	virtual ~IpnNotEqual() {}
+	void Print() const { printf("IpnNotEqual\n"); }
+	long long Calc(double x, double y) const { return x != y; }
+	virtual void ThrowFst(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InNotEqualFst); }
+	virtual void ThrowScd(int LineNum) const 
+		{ throw new IpnExNotIntOrReal(LineNum, InNotEqualScd); }
+};
 
 class IpnNeg: public IpnFunction {
 public:
+	void Print() const { printf("IpnNeg\n"); }
 	IpnNeg(int l = 0): IpnFunction(l) {}
 	virtual ~IpnNeg() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack) const
@@ -1144,6 +1296,7 @@ public:
 
 class IpnPut: public IpnFunction {
 public:
+	void Print() const { printf("IpnPut\n"); }
 	IpnPut(int l = 0): IpnFunction(l) {}
 	virtual ~IpnPut() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack) const
@@ -1182,6 +1335,7 @@ public:
 
 class IpnSemicolon: public IpnFunction {
 public:
+	void Print() const { printf("IpnSemicolon\n"); }
 	IpnSemicolon(int l = 0): IpnFunction(l) {}
 	virtual ~IpnSemicolon() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack) const
@@ -1201,6 +1355,7 @@ public:
 
 class IpnNoOp: public IpnFunction {
 public:
+	void Print() const { printf("IpnNoOp\n"); }
 	IpnNoOp(int l = 0): IpnFunction(l) {}
 	virtual ~IpnNoOp() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack) const { return 0; }
@@ -1208,6 +1363,7 @@ public:
 
 class IpnBraceL: public IpnFunction {
 public:
+	void Print() const { printf("IpnBraceL\n"); }
 	IpnBraceL(int l = 0): IpnFunction(l) {}
 	virtual ~IpnBraceL() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack) const { return 0; }
@@ -1215,6 +1371,7 @@ public:
 
 class IpnBraceR: public IpnFunction {
 public:
+	void Print() const { printf("IpnBraceR\n"); }
 	IpnBraceR(int l = 0): IpnFunction(l) {}
 	virtual ~IpnBraceR() {}
 	virtual IpnElem *EvaluateFun(IpnItem **stack) const { return 0; }
@@ -1230,14 +1387,252 @@ public:
 	}
 };
 
-class IpnSell: public IpnFunction {
+class IpnGameAction: public IpnElem {
+protected:
+	long long GetInt(IpnItem **stack) const
+	{
+		IpnElem *operand = Pop(stack);
+		IpnInt *iInt = dynamic_cast<IpnInt*>(operand);
+		if (iInt) {
+			return  iInt->Get();
+		} else {
+			throw IpnExNotIntGameAct(operand->GetLineNum());
+		}
+		return 0;
+	}	
+public:
+	IpnGameAction(int l = 0): IpnElem(l) {}
+	virtual IpnElem *MakeAction(IpnItem **stack) const = 0;
+	void Evaluate(IpnItem **stack, IpnItem **CurCmd, VarElem **VarList) const
+	{
+		IpnElem *res = MakeAction(stack);
+		if (res)
+			Push(stack, res);
+		*CurCmd = (*CurCmd)->next;
+	}
 };
 
-class IpnEndTurn: public IpnFunction {
+class IpnProd: public IpnGameAction {
+public:
+	IpnProd(int l): IpnGameAction(l) {}
+	virtual ~IpnProd() {}
+	virtual void Print() const { printf("IpnProd\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long prod = GetInt(stack);
+		return 0;
+	}
+};
+
+class IpnSell: public IpnGameAction {
+public:
+	IpnSell(int l): IpnGameAction(l) {}
+	virtual ~IpnSell() {}
+	virtual void Print() const { printf("IpnSell\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long price = GetInt(stack), prod = GetInt(stack);
+		return 0;
+	}
+};
+
+class IpnBuy: public IpnGameAction {
+public:
+	IpnBuy(int l): IpnGameAction(l) {}
+	virtual ~IpnBuy() {}
+	virtual void Print() const { printf("IpnBuy\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long price = GetInt(stack), raw = GetInt(stack);
+		return 0;
+	}
+};
+
+class IpnBuild: public IpnGameAction {
+public:
+	IpnBuild(int l): IpnGameAction(l) {}
+	virtual ~IpnBuild() {}
+	virtual void Print() const { printf("IpnBuild\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long number = GetInt(stack);
+		return 0;
+	}
+};
+
+class IpnPrintMyInfo: public IpnGameAction {
+public:
+	IpnPrintMyInfo(int l): IpnGameAction(l) {}
+	virtual ~IpnPrintMyInfo() {}
+	virtual void Print() const { printf("IpnPrintMyInfo\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return 0;
+	}
+};
+
+class IpnPrintMarketInfo: public IpnGameAction {
+public:
+	IpnPrintMarketInfo(int l): IpnGameAction(l) {}
+	virtual ~IpnPrintMarketInfo() {}
+	virtual void Print() const { printf("IpnPrintMarketInfo\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return 0;
+	}
+};
+
+class IpnPrintPlayerInfo: public IpnGameAction {
+public:
+	IpnPrintPlayerInfo(int l): IpnGameAction(l) {}
+	virtual ~IpnPrintPlayerInfo() {}
+	virtual void Print() const { printf("IpnPrintPlayerInfo\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long number = GetInt(stack);
+		return 0;
+	}
+};
+
+class IpnPlayerProd: public IpnGameAction {
+public:
+	IpnPlayerProd(int l): IpnGameAction(l) {}
+	virtual ~IpnPlayerProd() {}
+	virtual void Print() const { printf("IpnPlayerProd\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long number = GetInt(stack);
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnPlayerRaw: public IpnGameAction {
+public:
+	IpnPlayerRaw(int l): IpnGameAction(l) {}
+	virtual ~IpnPlayerRaw() {}
+	virtual void Print() const { printf("IpnPlayerRaw\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long number = GetInt(stack);
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnPlayerFact: public IpnGameAction {
+public:
+	IpnPlayerFact(int l): IpnGameAction(l) {}
+	virtual ~IpnPlayerFact() {}
+	virtual void Print() const { printf("IpnPlayerFact\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long number = GetInt(stack);
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnPlayerMoney: public IpnGameAction {
+public:
+	IpnPlayerMoney(int l): IpnGameAction(l) {}
+	virtual ~IpnPlayerMoney() {}
+	virtual void Print() const { printf("IpnPlayerMoney\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+//		long long number = GetInt(stack);
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMinRawPrice: public IpnGameAction {
+public:
+	IpnMinRawPrice(int l): IpnGameAction(l) {}
+	virtual ~IpnMinRawPrice() {}
+	virtual void Print() const { printf("IpnMinRawPrice\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMaxProdPrice: public IpnGameAction {
+public:
+	IpnMaxProdPrice(int l): IpnGameAction(l) {}
+	virtual ~IpnMaxProdPrice() {}
+	virtual void Print() const { printf("IpnMaxProdPrice\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMaxRaw: public IpnGameAction {
+public:
+	IpnMaxRaw(int l): IpnGameAction(l) {}
+	virtual ~IpnMaxRaw() {}
+	virtual void Print() const { printf("IpnMaxRaw\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMaxProd: public IpnGameAction {
+public:
+	IpnMaxProd(int l): IpnGameAction(l) {}
+	virtual ~IpnMaxProd() {}
+	virtual void Print() const { printf("IpnMaxProd\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMyRaw: public IpnGameAction {
+public:
+	IpnMyRaw(int l): IpnGameAction(l) {}
+	virtual ~IpnMyRaw() {}
+	virtual void Print() const { printf("IpnMyRaw\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMyProd: public IpnGameAction {
+public:
+	IpnMyProd(int l): IpnGameAction(l) {}
+	virtual ~IpnMyProd() {}
+	virtual void Print() const { printf("IpnMyProd\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMyFact: public IpnGameAction {
+public:
+	IpnMyFact(int l): IpnGameAction(l) {}
+	virtual ~IpnMyFact() {}
+	virtual void Print() const { printf("IpnMyFact\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
+};
+
+class IpnMyMoney: public IpnGameAction {
+public:
+	IpnMyMoney(int l): IpnGameAction(l) {}
+	virtual ~IpnMyMoney() {}
+	virtual void Print() const { printf("IpnMyMoney\n"); }
+	virtual IpnElem *MakeAction(IpnItem **stack) const
+	{
+		return new IpnInt(0, 0);
+	}
 };
 
 class IpnOpGo: public IpnElem {
 public:
+	void Print() const { printf("IpnOpGo\n"); }
 	IpnOpGo(int l = 0): IpnElem(l) {}
 	virtual ~IpnOpGo() {}
 	virtual void Evaluate(
@@ -1255,6 +1650,7 @@ public:
 
 class IpnOpGoFalse: public IpnElem {
 public:
+	void Print() const { printf("IpnOpGoFalse\n"); }
 	IpnOpGoFalse(int l = 0): IpnElem(l) {}
 	virtual ~IpnOpGoFalse() {}
 	virtual void Evaluate(
@@ -1287,12 +1683,12 @@ public:
 };
 
 class Ipn {
-	IpnItem *FstItem, *LstItem;
+	IpnItem *FstItem, *LstItem, *BeforeLast;
 	IpnBraceL *BraceL;
 	IpnBraceR *BraceR;
 	IpnVarDesc *VarDesc;
 public:
-	Ipn(): FstItem(0), LstItem(0), BraceL(0), BraceR(0) {}
+	Ipn(): FstItem(0), LstItem(0), BeforeLast(0), BraceL(0), BraceR(0) {}
 	void Add(IpnElem *NewElem);
 	void Add(IpnElem *NewElem1, IpnElem *NewElem2);
 	void AddNoShift(IpnElem *NewElem);
@@ -1302,7 +1698,8 @@ public:
 	IpnItem* Get() { return LstItem; }
 	IpnItem* GetLast() { return LstItem->next; }
 	IpnItem* GetLastLast() { return LstItem->next->next; }
-	void Shift() { LstItem = LstItem->next; }
+	void DeleteLast();
+	void Shift();
 	void Shift(int n);
 	void Perform();
 	void Print(IpnElem *elem);
@@ -1323,7 +1720,9 @@ void Ipn::Add(IpnElem *NewElem)
 	if (FstItem == 0) {
 		FstItem = new IpnItem(NewElem, 0);
 		LstItem = FstItem;
+		BeforeLast = FstItem;
 	} else {
+		BeforeLast = LstItem;
 		LstItem->next = new IpnItem(NewElem, LstItem->next);
 		LstItem = LstItem->next;
 	}
@@ -1346,6 +1745,24 @@ void Ipn::AddNoShift(IpnElem *NewElem1, IpnElem *NewElem2)
 	AddNoShift(NewElem1);
 }
 
+void Ipn::DeleteLast()
+{
+	IpnItem *help = LstItem;
+	BeforeLast->next = LstItem->next;
+	delete help->elem;
+	delete help;
+	LstItem = BeforeLast;
+	BeforeLast = FstItem;
+	while(BeforeLast->next != LstItem)
+		BeforeLast = BeforeLast->next;
+}	
+
+void Ipn::Shift()
+{
+	BeforeLast = LstItem;
+	LstItem = LstItem->next;
+}
+
 void Ipn::Shift(int n)
 {
 	for(int i = 0; i < n; i++)
@@ -1360,22 +1777,22 @@ void Ipn::Perform()
 	try
 	{
 		while(CurCmd != 0) {
-#ifdef DEBUGGING
-			Print(CurCmd->elem);
+#ifdef DEBUGGINGINTER
+			CurCmd->elem->Print();
 #endif
 			BraceL = dynamic_cast<IpnBraceL*>(CurCmd->elem);
 			BraceR = dynamic_cast<IpnBraceR*>(CurCmd->elem);
 			VarDesc = dynamic_cast<IpnVarDesc*>(CurCmd->elem);
 			if (BraceL) {
 				NestingLevel++;
-#ifdef DEBUGGING
-				printf("%d\n", NestingLevel);
+#ifdef DEBUGGINGINTER
+				printf("!%d\n", NestingLevel);
 #endif
 			}
 			if (BraceR) {
 				BraceR->DelVar(&VarList, NestingLevel);
-#ifdef DEBUGGING
-				printf("%d!\n", NestingLevel);
+#ifdef DEBUGGINGINTER
+				printf("!%d\n", NestingLevel);
 #endif
 			}
 			if (VarDesc) {
@@ -1384,72 +1801,49 @@ void Ipn::Perform()
 			CurCmd->elem->Evaluate(&stack, &CurCmd, &VarList);
 		}
 	}
-	catch(IpnEx *ex)
-	{
-		ex->HandleError();
-	}
+	catch(IpnEx *ex) { ex->HandleError(); delete ex; }
 }
 
-void Ipn::Print(IpnElem *elem)
-{
-	if (dynamic_cast<IpnInt*>(elem)) {
-		printf("IpnInt\n");
-	} else if (dynamic_cast<IpnReal*>(elem)) {
-		printf("IpnReal\n");
-	} else if (dynamic_cast<IpnLabel*>(elem)) {
-		printf("IpnLabel\n");
-	} else if (dynamic_cast<IpnEndOfArg*>(elem)) {
-		printf("IpnEndOfArg\n");
-	} else if (dynamic_cast<IpnString*>(elem)) {
-		printf("IpnString\n");
-	} else if (dynamic_cast<IpnVarAddr*>(elem)) {
-		printf("IpnVarAddr\n");
-	} else if (dynamic_cast<IpnVar*>(elem)) {
-		printf("IpnVar\n");
-	} else if (dynamic_cast<IpnAssign*>(elem)) {
-		printf("IpnAssign\n");
-	} else if (dynamic_cast<IpnAdd*>(elem)) {
-		printf("IpnAdd\n");
-	} else if (dynamic_cast<IpnSub*>(elem)) {
-		printf("IpnSub\n");
-	} else if (dynamic_cast<IpnMul*>(elem)) {
-		printf("IpnMul\n");
-	} else if (dynamic_cast<IpnDiv*>(elem)) {
-		printf("IpnDiv\n");
-	} else if (dynamic_cast<IpnOr*>(elem)) {
-		printf("IpnOr\n");
-	} else if (dynamic_cast<IpnAnd*>(elem)) {
-		printf("IpnAnd\n");
-	} else if (dynamic_cast<IpnLess*>(elem)) {
-		printf("IpnLess\n");
-	} else if (dynamic_cast<IpnLessE*>(elem)) {
-		printf("IpnLessE\n");
-	} else if (dynamic_cast<IpnGreat*>(elem)) {
-		printf("IpnOr\n");
-	} else if (dynamic_cast<IpnGreatE*>(elem)) {
-		printf("IpnAnd\n");
-	} else if (dynamic_cast<IpnEqual*>(elem)) {
-		printf("IpnEqual\n");
-	} else if (dynamic_cast<IpnNotEqual*>(elem)) {
-		printf("IpnNotEqual\n");
-	} else if (dynamic_cast<IpnNeg*>(elem)) {
-		printf("IpnNeg\n");
-	} else if (dynamic_cast<IpnSemicolon*>(elem)) {
-		printf("IpnSemicolon\n");
-	} else if (dynamic_cast<IpnVarDesc*>(elem)) {
-		printf("IpnVarDesc\n");
-	} else if (dynamic_cast<IpnNoOp*>(elem)) {
-		printf("IpnNoOp\n");
-	} else if (dynamic_cast<IpnBraceL*>(elem)) {
-		printf("IpnBraceL\n");
-	} else if (dynamic_cast<IpnBraceR*>(elem)) {
-		printf("IpnBraceR\n");
-	} else if (dynamic_cast<IpnOpGo*>(elem)) {
-		printf("IpnOpGo\n");
-	} else if (dynamic_cast<IpnOpGoFalse*>(elem)) {
-		printf("IpnOpGoFalse\n");
-	}
-}
+class ParsExc {
+public:
+	ParsExc() {}
+	virtual ~ParsExc() {}
+	virtual void PrintError() const = 0;
+};
+
+class ParsExcLParen: public ParsExc {
+	char *str;
+public:
+	ParsExcLParen(const char *s) { str = strdup(s); }
+	virtual ~ParsExcLParen() { delete [] str; }
+	virtual void PrintError() const
+		{ printf("\"(\" expected after \"%s\" ", str); }
+};
+
+class ParsExcComma: public ParsExc {
+	char *str;
+public:
+	ParsExcComma(const char *s) { str = strdup(s); }
+	virtual ~ParsExcComma() { delete [] str; }
+	virtual void PrintError() const
+		{ printf("\",\" expected after the first argument of \"%s\" ", str); }
+};
+
+class ParsExcRParen: public ParsExc {
+	char *str;
+public:
+	ParsExcRParen(const char *s) { str = strdup(s); }
+	virtual ~ParsExcRParen() { delete [] str; }
+	virtual void PrintError() const
+		{ printf("\")\" expected after the arguments of \"%s\" ", str); }
+};
+
+class BadLex {
+	int ErrNum;
+public:
+	BadLex(int e): ErrNum(e) {}
+	int GetErrNum() const { return ErrNum; }
+};
 
 struct IntItem {
 	int value;
@@ -1462,6 +1856,7 @@ class IntStack {
 public:
 	IntStack(int Init) { first = new IntItem(Init, 0); }
 	void Add(int NewElem) { first = new IntItem(NewElem, first); }
+	void AddAssign(Ipn *ipn, int LineNum);
 	void AddOr(Ipn *ipn, int LineNum);
 	void AddAnd(Ipn *ipn, int LineNum);
 	void AddComp(Ipn *ipn, int oper, int LineNum);
@@ -1474,9 +1869,21 @@ public:
 	~IntStack();
 };
 
+void IntStack::AddAssign(Ipn *ipn, int LineNum)
+{
+	int v = first->value;
+	if (v==LexLParen || v==LexAssign) {
+		ipn->DeleteLast();
+		Add(LexAssign);
+	} else {
+		throw BadLex(LvalueReq);
+	}
+};
+
 void IntStack::AddOr(Ipn *ipn, int LineNum)
 {
-	if (first->value == LexLParen) {
+	int v = first->value;
+	if (v==LexLParen || v==LexAssign) {
 		Add(LexOr);
 	} else {
 		AddIpn(ipn, Get(), LineNum);
@@ -1487,7 +1894,7 @@ void IntStack::AddOr(Ipn *ipn, int LineNum)
 void IntStack::AddAnd(Ipn *ipn, int LineNum)
 {
 	int v = first->value;
-	if (v==LexLParen || v==LexOr) {
+	if (v==LexLParen || v==LexOr || v==LexAssign) {
 		Add(LexAnd);
 	} else {
 		AddIpn(ipn, Get(), LineNum);
@@ -1498,7 +1905,7 @@ void IntStack::AddAnd(Ipn *ipn, int LineNum)
 void IntStack::AddComp(Ipn *ipn, int oper, int LineNum)
 {
 	int v = first->value;
-	if (v==LexLParen || v==LexOr || v==LexAnd) {
+	if (v==LexLParen || v==LexOr || v==LexAnd || v==LexAssign) {
 		Add(oper);
 	} else {
 		AddIpn(ipn, Get(), LineNum);
@@ -1549,7 +1956,9 @@ void IntStack::MetRParen(Ipn *ipn, int LineNum)
 
 void IntStack::AddIpn(Ipn *ipn, int AddValue, int LineNum)
 {
-	if (AddValue == LexOr) {
+	if (AddValue == LexAssign) {
+		ipn->Add(new IpnAssign(LineNum));
+	} else if (AddValue == LexOr) {
 		ipn->Add(new IpnOr(LineNum));
 	} else if (AddValue == LexAnd) {
 		ipn->Add(new IpnAnd(LineNum));
@@ -1599,13 +2008,6 @@ IntStack::~IntStack()
 	}
 }
 
-class BadLex {
-	int ErrNum;
-public:
-	BadLex(int e): ErrNum(e) {}
-	int GetErrNum() const { return ErrNum; }
-};
-
 class Parser {
 	Automat automat;
 	Ipn *ipn;
@@ -1621,9 +2023,16 @@ class Parser {
 	void WhileDesc();
 	void GetDesc();
 	void PutDesc();
-	void AssignDesc();
 	void IfElseDesc();
+	void ProdDesc();
+	void SellDesc();
+	void BuyDesc();
+	void BuildDesc();
+	void PrintMyInfoDesc();
+	void PrintMarketInfoDesc();
+	void PrintPlayerInfoDesc();
 	void ArrayDesc(int DefVal, int RFst, int RScd, int ValFst, int ValScd);
+	void Expression(IntStack *stack, int RParenErr, int ValOrIdentErr);
 	void ExpOr(IntStack *stack, int RParenErr, int ValOrIdentErr);
 	void ExpAnd(IntStack *stack, int RParenErr, int ValOrIdentErr);
 	void ExpComp(IntStack *stack, int RParenErr, int ValOrIdentErr);
@@ -1632,6 +2041,7 @@ class Parser {
 	void ExpLast(IntStack *stack, int RParenErr, int ValOrIdentErr);
 	int CheckComp(int n);
 	int CheckInExp(int ErrNum);
+	int CheckExp();
 public:
 	Parser()
 		: automat(), current(0), last(0), LexNum(0), f(0) { ipn = new Ipn; }
@@ -1662,6 +2072,16 @@ Ipn *Parser::analyze(FILE *file)
 		}
 		(*current).Print();
 		printf("\"\n");
+		return 0;
+	}
+	catch(ParsExc *ex)
+	{
+		printf("Error in line %d: ", (*current).GetLineNum());
+		ex->PrintError();
+		printf("before \"");
+		(*current).Print();
+		printf("\"\n");
+		delete ex;
 		return 0;
 	}
 	return ipn;
@@ -1722,9 +2142,26 @@ void Parser::Action()
 	} else if (LexNum == LexPut) {
 		next();
 		PutDesc();
-	} else if (LexNum == LexIdent) {
+	} else if (LexNum == LexProd) {
+		ProdDesc();
+	} else if (LexNum == LexSell) {
+		SellDesc();
+	} else if (LexNum == LexBuy) {
+		BuyDesc();
+	} else if (LexNum == LexBuild) {
+		BuildDesc();
+	} else if (LexNum == LexPrintPlayerInfo) {
+		PrintPlayerInfoDesc();
+	} else if (LexNum == LexPrintMyInfo) {
+		PrintMyInfoDesc();
+	} else if (LexNum == LexPrintMarketInfo) {
+		PrintMarketInfoDesc();
+	} else if (CheckExp()) {
+		Expression(0, RParenExp, ValOrIdentExp);
+		if (LexNum != LexSemicolon)
+			throw BadLex(SemicolonExpect);
+		ipn->Add(new IpnSemicolon(LineNum));
 		next();
-		AssignDesc();
 	} else if (LexNum == LexIf) {
 		next();
 		IfElseDesc();
@@ -1732,6 +2169,12 @@ void Parser::Action()
 		return;
 	}
 	Action();
+}
+
+int Parser::CheckExp()
+{
+	return LexNum == LexIdent || LexNum == LexValInt || LexNum == LexValReal
+		|| LexNum == LexStr;
 }
 
 int Parser::CheckInExp(int ErrNum)
@@ -1748,10 +2191,10 @@ void Parser::ArrayDesc(int DefVal, int RFst, int RScd, int ValFst, int ValScd)
 {
 	if (LexNum == LexLSB) {
 		next();
-		ExpOr(0, RFst, ValFst);
+		Expression(0, RFst, ValFst);
 		if (LexNum == LexComma) {
 			next();
-			ExpOr(0, RScd, ValScd);
+			Expression(0, RScd, ValScd);
 		} else {
 			ipn->Add(new IpnInt(DefVal, current->GetLineNum()));
 		}
@@ -1775,7 +2218,7 @@ void Parser::IntDesc()
 	if (LexNum != LexLParen)
 		throw BadLex(LParenInt);
 	next();
-	ExpOr(0, RParenInitValIntExp, ValOrIdentInitValIntExp);
+	Expression(0, RParenInitValIntExp, ValOrIdentInitValIntExp);
 	if (LexNum != LexRParen)
 		throw BadLex(RParenInt);
 	next();
@@ -1798,7 +2241,7 @@ void Parser::RealDesc()
 	if (LexNum != LexLParen)
 		throw BadLex(LParenReal);
 	next();
-	ExpOr(0, RParenInitValRealExp, ValOrIdentInitValRealExp);
+	Expression(0, RParenInitValRealExp, ValOrIdentInitValRealExp);
 	if (LexNum != LexRParen)
 		throw BadLex(RParenReal);
 	next();
@@ -1844,7 +2287,7 @@ void Parser::WhileDesc()
 	next();
 	ipn->Add(new IpnNoOp(LineNum));
 	IpnLabel *label = new IpnLabel(ipn->Get(), LineNum);
-	ExpOr(0, RParenWhileExp, ValOrIdentWhileExp);
+	Expression(0, RParenWhileExp, ValOrIdentWhileExp);
 	ipn->AddNoShift(new IpnNoOp(LineNum));
 	ipn->Add(new IpnLabel(ipn->GetLast(), LineNum));
 	ipn->Add(new IpnOpGoFalse(LineNum));
@@ -1890,46 +2333,14 @@ void Parser::PutDesc()
 		throw BadLex(LParenPut);
 	ipn->Add(new IpnEndOfArg(LineNum));
 	next();
-	ExpOr(0, RParenPutExp, ValOrIdentPutExp);
+	Expression(0, RParenPutExp, ValOrIdentPutExp);
 	while(LexNum == LexComma) {
 		next();
-		ExpOr(0, RParenPutExp, ValOrIdentPutExp);
+		Expression(0, RParenPutExp, ValOrIdentPutExp);
 	}
 	if (LexNum != LexRParen)
 		throw BadLex(RParenPut);
 	ipn->Add(new IpnPut(LineNum));
-	next();
-}
-
-void Parser::AssignDesc()
-{
-	int AssignNum = 1, line = last->GetLineNum();
-	char *name = strdup(last->GetName());
-	ArrayDesc(0, RpArrFstAsgn, ValArrFstAsgn, RpArrScdAsgn, ValArrScdAsgn);
-	ipn->Add(new IpnVarAddr(name, line));
-	delete [] name;
-	while(LexNum == LexMultiAssign) {
-		next();
-		if (LexNum != LexIdent)
-			throw BadLex(IdentExpectAssign);
-		AssignNum++;
-		char *name = strdup(current->GetName());
-		line = LineNum;
-		next();
-		ArrayDesc(0, RpArrFstAsgn, ValArrFstAsgn, RpArrScdAsgn, ValArrScdAsgn);
-		ipn->Add(new IpnVarAddr(name, line));
-		delete [] name;
-	}
-	if (LexNum != LexAssign)
-		throw BadLex(AssignExpect);
-	line = LineNum;
-	next();
-	ExpOr(0, RParenAssignExp, ValOrIdentAssignExp);
-	for(int i = 0; i < AssignNum; i++)
-		ipn->Add(new IpnAssign(line));
-	if (LexNum != LexSemicolon)
-		throw BadLex(SemicolonExpect);
-	ipn->Add(new IpnSemicolon(LineNum));
 	next();
 }
 
@@ -1939,7 +2350,7 @@ void Parser::IfElseDesc()
 		throw BadLex(LParenIf);
 	ipn->Add(new IpnBraceL(LineNum));
 	next();
-	ExpOr(0, RParenIfExp, ValOrIdentIfExp);
+	Expression(0, RParenIfExp, ValOrIdentIfExp);
 	ipn->AddNoShift(new IpnNoOp(LineNum));
 	ipn->Add(new IpnLabel(ipn->GetLast(), LineNum));
 	ipn->Add(new IpnOpGoFalse(LineNum));
@@ -1969,24 +2380,138 @@ void Parser::IfElseDesc()
 	}
 	ipn->Shift();
 	ipn->Add(new IpnBraceR(last->GetLineNum()));
-}	
+}
 
-void Parser::ExpOr(IntStack *stack, int RParenErr, int ValOrIdentErr)
+void Parser::ProdDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("prod");
+	next();
+	Expression(0, RParenProdExp, ValOrIdentProdExp);
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("prod");
+	next();
+	ipn->Add(new IpnProd(line));
+}
+
+void Parser::SellDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("sell");
+	next();
+	Expression(0, RParenSellFstExp, ValOrIdentSellFstExp);
+	if (LexNum != LexComma)
+		throw new ParsExcComma("sell");
+	next();
+	Expression(0, RParenSellScdExp, ValOrIdentSellScdExp);
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("sell");
+	next();
+	ipn->Add(new IpnSell(line));
+}
+
+void Parser::BuyDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("buy");
+	next();
+	Expression(0, RParenBuyFstExp, ValOrIdentBuyFstExp);
+	if (LexNum != LexComma)
+		throw new ParsExcComma("buy");
+	next();
+	Expression(0, RParenBuyScdExp, ValOrIdentBuyScdExp);
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("buy");
+	next();
+	ipn->Add(new IpnBuy(line));
+}
+
+void Parser::BuildDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("build");
+	next();
+	Expression(0, RParenBuildExp, ValOrIdentBuildExp);
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("build");
+	next();
+	ipn->Add(new IpnBuild(line));
+}
+
+void Parser::PrintPlayerInfoDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("PrintPlayerInfo");
+	next();
+	Expression(0, RParenPrintPlayerInfoExp, ValOrIdentPrintPlayerInfoExp);
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("PrintPlayerInfo");
+	next();
+	ipn->Add(new IpnPrintPlayerInfo(line));
+}
+
+void Parser::PrintMyInfoDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("PrintMyInfo");
+	next();
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("PrintMyInfo");
+	next();
+	ipn->Add(new IpnPrintMyInfo(line));
+}
+
+void Parser::PrintMarketInfoDesc()
+{
+	int line = current->GetLineNum();
+	next();
+	if (LexNum != LexLParen)
+		throw new ParsExcLParen("PrintMarketInfo");
+	next();
+	if (LexNum != LexRParen)
+		throw new ParsExcRParen("PrintMarketInfo");
+	next();
+	ipn->Add(new IpnPrintMarketInfo(line));
+}
+
+void Parser::Expression(IntStack *stack, int RParenErr, int ValOrIdentErr)
 {
 	int Declared = 0;
 	if (stack == 0) {
 		stack = new IntStack(LexLParen);
 		Declared = 1;
 	}
+	ExpOr(stack, RParenErr, ValOrIdentErr);
+	while(LexNum == LexAssign) {
+		stack->AddAssign(ipn, LineNum);
+		next();
+		ExpOr(stack, RParenErr, ValOrIdentErr);
+	}
+	if (Declared) {
+		stack->MetRParen(ipn, LineNum);
+		delete stack;
+	}
+}
+
+void Parser::ExpOr(IntStack *stack, int RParenErr, int ValOrIdentErr)
+{
 	ExpAnd(stack, RParenErr, ValOrIdentErr);
 	while(LexNum == LexOr) {
 		stack->AddOr(ipn, LineNum);
 		next();
 		ExpAnd(stack, RParenErr, ValOrIdentErr);
-	}
-	if (Declared) {
-		stack->MetRParen(ipn, LineNum);
-		delete stack;
 	}
 }
 
@@ -2047,7 +2572,8 @@ void Parser::ExpLast(IntStack *stack, int RParenErr, int ValOrIdentErr)
 		int line = current->GetLineNum();
 		next();
 		ArrayDesc(0, RpArrFstExp, ValArrFstExp, RpArrScdExp, ValArrScdExp);
-		ipn->Add(new IpnVar(name, line));
+		ipn->Add(new IpnVarAddr(name, line));
+		ipn->Add(new IpnTakeValue(line));
 		delete [] name;
 	} else if (LexNum == LexValInt) {
 		ipn->Add(new IpnInt(current->GetInt(), LineNum));
@@ -2065,11 +2591,55 @@ void Parser::ExpLast(IntStack *stack, int RParenErr, int ValOrIdentErr)
 	} else if (LexNum == LexLParen) {
 		stack->Add(LexLParen);
 		next();
-		ExpOr(stack, RParenErr, ValOrIdentErr);
+		Expression(stack, RParenErr, ValOrIdentErr);
 		if (LexNum != LexRParen)
 			throw BadLex(RParenErr);
 		stack->MetRParen(ipn, LineNum);
 		next();
+	} else if (LexNum == LexMinRawPrice) {
+		ipn->Add(new IpnMinRawPrice(LineNum));
+		next();
+	} else if (LexNum == LexMaxProdPrice) {
+		ipn->Add(new IpnMaxProdPrice(LineNum));
+		next();
+	} else if (LexNum == LexMaxRaw) {
+		ipn->Add(new IpnMaxRaw(LineNum));
+		next();
+	} else if (LexNum == LexMaxProd) {
+		ipn->Add(new IpnMaxProd(LineNum));
+		next();
+	} else if (LexNum == LexMyProd) {
+		ipn->Add(new IpnMyProd(LineNum));
+		next();
+	} else if (LexNum == LexMyRaw) {
+		ipn->Add(new IpnMyRaw(LineNum));
+		next();
+	} else if (LexNum == LexMyFact) {
+		ipn->Add(new IpnMyFact(LineNum));
+		next();
+	} else if (LexNum == LexMyMoney) {
+		ipn->Add(new IpnMyMoney(LineNum));
+		next();
+	} else if (LexNum == LexPlayerProd) {
+		int line = current->GetLineNum();
+		next();
+		Expression(0, RParenPlayerProdExp, ValOrIdentPlayerProdExp);
+		ipn->Add(new IpnPlayerProd(line));
+	} else if (LexNum == LexPlayerRaw) {
+		int line = current->GetLineNum();
+		next();
+		Expression(0, RParenPlayerRawExp, ValOrIdentPlayerRawExp);
+		ipn->Add(new IpnPlayerRaw(line));
+	} else if (LexNum == LexPlayerFact) {
+		int line = current->GetLineNum();
+		next();
+		Expression(0, RParenPlayerFactExp, ValOrIdentPlayerFactExp);
+		ipn->Add(new IpnPlayerFact(line));
+	} else if (LexNum == LexPlayerMoney) {
+		int line = current->GetLineNum();
+		next();
+		Expression(0, RParenPlayerMoneyExp, ValOrIdentPlayerMoneyExp);
+		ipn->Add(new IpnPlayerMoney(line));
 	} else {
 		throw BadLex(ValOrIdentErr);
 	}
