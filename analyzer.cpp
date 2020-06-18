@@ -1,81 +1,55 @@
 #include <stdio.h>
-
-enum {MaxName = 128};
-
-int Letter(char c) 
-{
-	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
-}
-
-int Digit(char c)
-{
-	return c >= '0' && c <= '9';
-}
-
-int EndLine(char c)
-{
-	return c == '\t' || c == '\r' || c == '\n';
-}
-
-int Brace(char c)
-{
-	return c=='(' || c==')' || c=='[' || c==']' || c=='{' || c=='}';
-}
-
-int Compare(char c)
-{
-	return c == '>' || c == '<' || c == '=';
-}
-
-int Single(char c)
-{
-	return c==':'||c==';'||c==','||c=='+'||c=='-'||c=='*'||c=='/';
-}
-
-int Other(char c)
-{
-	return c=='!'||c =='@'||c=='#'||c=='$'||c=='%'||c=='?'||c=='&';
-}
-
-int All(char c)
-{
-	return Letter(c)||Digit(c)||Brace(c)||Compare(c)||Single(c)||Other(c); 
-}
-
-int Delimiter(char c)
-{
-	return EndLine(c)||Brace(c)||Compare(c)||Single(c)||c=='&'||c=='#'||c==' ';
-}
+#include <string.h>
+#include <stdlib.h>
+enum {
+	LexEmpty, LexIdent, LexConst, LexStr, LexCom, LexBirth, LexDeath, LexDie,
+	LexInt,	LexReal, LexString, LexIter, LexIf, LexElse, LexWhile, LexDo,
+	LexPut, LexGet, LexLB, LexRB, LexLSB, LexRSB, LexLParen, LexRParen,
+	LexComma, LexColon, LexSemicolon, LexPlus, LexMinus, LexMul, LexDiv,
+	LexAssign, LexLT, LexLE, LexGT, LexGE, LexEq, LexNotEq, LexError,
+};
 
 class Lexeme {
-	char name[MaxName];
-	int NameSize, LexNum, LineNum, Correct;
+	char *value;
+	int LexNum, LineNum;
 public:
-	Lexeme()
+	Lexeme(): LexNum(0), LineNum(0) { value = NULL; }
+	Lexeme(char buf[], int &BufSize, int line, int num)
 	{
-		name[0] = 0;
-		Correct = 1;
-		NameSize = LexNum = LineNum = 0;
+		LexNum = num;
+		LineNum = line;
+//		if (LexNum == LexIdent || LexNum == LexConst || LexNum == LexCom) {
+			value = new char[BufSize + 1];
+			for(int i = 0; i <= BufSize; i++)
+				value[i] = buf[i];
+//		}
+		buf[0] = 0;
+		BufSize = 0;
 	}
-	void AddChar(char c)
+	int NotEmpty() { return LexNum; }
+	int CheckCorrect() { return LexNum != LexError; }  
+	void Print() 
 	{
-		if ((c != ' ' || NameSize != 0) && !EndLine(c)) {
-			name[NameSize] = c;
-			name[++NameSize] = 0;
-		}
+		printf("%d: %d ", LineNum, LexNum);
+//		if (LexNum == LexIdent || LexNum == LexConst || LexNum == LexCom)
+			printf("%s", value);
+		printf("\n");
 	}
-	int NotEmpty() { return NameSize; }
-	void SetLineNum(int n) { LineNum = n; }
-	int GetLineNum() { return LineNum; }
-	void Incorrect() { Correct = 0; }
-	int CheckCorrect() { return Correct; }  
-	void PrintLexeme() { printf("%d: %s\n", LineNum, name); }
+	void PrintError()
+	{
+		printf("Error in line %d: invalid lexeme %s\n", LineNum, value);
+	}
 };
 
 class Automat {
-	enum {H, String, Ident, Int, Real, Equal, LessGreater, Comment, Error, S, SResend}; 
-	Lexeme *lex, *ReadyLex;	
-	int state, LineNumber;
+	enum {H, String, Ident, Int, Real, Equal, lg, Comment, Error, S, SResend};
+	enum {MaxBuf = 4096};
+	static const char *TableOfWords[];
+	Lexeme *lex;
+	char buf[MaxBuf];
+	int BufSize, state, line;
+	Lexeme *StateS(char c, int begin);
+	void ChangeState(char c);
 	void StateH(char c);
 	void StateString(char c);
 	void StateIdent(char c);
@@ -84,135 +58,115 @@ class Automat {
 	void StateEqual(char c);
 	void StateLessGreater(char c);
 	void StateComment(char c);
-	void StateS(char c);
+	void AddBuf(char c);
+	int GetLexNum();
+	int Letter(char c); 
+	int Digit(char c);
+	int EndLine(char c);
+	int Brace(char c);
+	int Compare(char c);
+	int Single(char c);
+	int Other(char c);
+	int All(char c);
+	int Delimiter(char c);
 public:
-	Automat()
-	{
-		state = H;
-		LineNumber = 1;
-		ReadyLex = NULL;
-		lex = new Lexeme;
-	}
+	Automat(): BufSize(0), state(H), line(1) { buf[0] = 0; lex = NULL; }
 	Lexeme *FeedChar(char c);
 };
 
-void Automat::StateH(char c)
+const char *Automat::TableOfWords[] = 
 {
-	if (c == '#') {
-		state = Int;
-	} else if (c == '\"') {
-		state = String;
-	} else if (c == '&' || Letter(c)) {
-		state = Ident;
-	} else if (c == '=') {
-		state = Equal;
-	} else if (c == '>' || c == '<') {
-		state = LessGreater;
-	} else if (c == '/') {
-		state = Comment;
-	} else if (EndLine(c) || Brace(c) || Single(c) || c == ' ') {
-		state = S;
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	"", "", "", "", "", "birth", "death", "die", "int", "real", "string", "iterator",
+	"if", "else", "while", "do", "put", "get", "{", "}", "[", "]", "(", ")",
+	",", ":", ";", "+", "-", "*", "/", "=", "<", "<=", ">", ">=", "==", "=!",
+	NULL
+};
+
+int Automat::Letter(char c) 
+{
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
-void Automat::StateString(char c)
+int Automat::Digit(char c)
 {
-	if (c == '\"') {
-		state = S;
-	} else if (All(c) || c == ' ' || c == '\t') {
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	return c >= '0' && c <= '9';
 }
 
-void Automat::StateIdent(char c)
+int Automat::EndLine(char c)
 {
-	if (Letter(c) || Digit(c)) {
-	} else if (Delimiter(c)) {
-		state = SResend;
-		return;
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	return c == '\r' || c == '\n' || c == EOF;
 }
 
-void Automat::StateInt(char c)
+int Automat::Brace(char c)
 {
-	if (Digit(c)) {
-	} else if (c == '.') {
-		state = Real;
-	} else if (Delimiter(c)) {
-		state = SResend;
-		return;
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	return c=='(' || c==')' || c=='[' || c==']' || c=='{' || c=='}';
 }
 
-void Automat::StateReal(char c)
+int Automat::Compare(char c)
 {
-	if (Digit(c)) {
-	} else if (Delimiter(c)) {
-		state = SResend;
-		return;
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	return c == '>' || c == '<' || c == '=';
 }
 
-void Automat::StateEqual(char c)
+int Automat::Single(char c)
 {
-	if (c == '=' || c == '!') {
-		state = S;
-	} else if (Delimiter(c)) {
-		state = SResend;
-		return;
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	return c==':'||c==';'||c==','||c=='+'||c=='-'||c=='*'||c=='/';
 }
 
-void Automat::StateLessGreater(char c)
+int Automat::Other(char c)
 {
-	if (c == '=') {
-		state = S;
-	} else if (Delimiter(c)) {
-		state = SResend;
-		return;
-	} else {
-		state = Error;
-	}
-	(*lex).AddChar(c);
+	return c=='!'||c =='@'||c=='#'||c=='$'||c=='%'||c=='?'||c=='&';
 }
 
-void Automat::StateComment(char c)
+int Automat::All(char c)
 {
-	if (EndLine(c)) {
-		state = S;
-	} else {
-		(*lex).AddChar(c);
-	}
+	return Letter(c)||Digit(c)||Brace(c)||Compare(c)||Single(c)||Other(c); 
 }
 
-void Automat::StateS(char c)
+int Automat::Delimiter(char c)
 {
-	state = H;
-	ReadyLex = lex;
-	(*ReadyLex).SetLineNum(LineNumber);
-	if (c == '\n')
-		LineNumber++;
-	lex = new Lexeme;
+	return EndLine(c)||Brace(c)||Compare(c)||Single(c)||c=='&'||c=='#'||c==' ';
 }
 
 Lexeme *Automat::FeedChar(char c)
+{
+	if (state == S) {
+		return StateS(c, 1);
+	} else if (state == Error) {
+		return new Lexeme(buf, BufSize, line, LexError);
+	}
+	ChangeState(c);
+	if (state == S) {
+		return StateS(c, 0);
+	} else if (state == SResend) {
+		return StateS(c, 1);
+	} else if (state == Error) {
+		return new Lexeme(buf, BufSize, line, LexError);
+	} else {
+		AddBuf(c);
+	}
+	return NULL;
+}
+
+Lexeme *Automat::StateS(char c, int begin)
+{
+	if (!begin)
+		AddBuf(c);
+	state = H;
+	lex = new Lexeme(buf, BufSize, line, GetLexNum());
+	if (c == '\n')
+		line++;
+	if (begin) {
+		ChangeState(c);
+		AddBuf(c);
+	}
+	if ((*lex).NotEmpty()) {
+		return lex;
+	} else {
+		return NULL;
+	}
+}
+
+void Automat::ChangeState(char c)
 {
 	if (state == H) {
 		StateH(c);
@@ -226,73 +180,158 @@ Lexeme *Automat::FeedChar(char c)
 		StateReal(c);
 	} else if (state == Equal) {
 		StateEqual(c);
-	} else if (state == LessGreater) {
+	} else if (state == lg) {
 		StateLessGreater(c);
 	} else if (state == Comment) {
 		StateComment(c);
 	}
-	if (state == S || state == SResend) {
-		StateS(c);
-		if (state == SResend)
-			FeedChar(c);
-		if ((*ReadyLex).NotEmpty())
-			return ReadyLex;
-	} else if (state == Error) {
-		(*lex).Incorrect();
-		return lex;
-	}
-	return NULL;
 }
 
-void PrintError(Lexeme *lex)
+void Automat::StateH(char c)
 {
-	printf("Error in line %d: invalid lexeme", (*lex).GetLineNum());
-	(*lex).PrintLexeme();
-}
-
-struct ListOfLexeme {
-	Lexeme *lex;
-	ListOfLexeme *next;
-	ListOfLexeme (): next(NULL) { lex = new Lexeme;}
-};
-
-void PrintListOfLex(ListOfLexeme *list)
-{
-	while(list != NULL) {
-		(*(*list).lex).PrintLexeme();
-		list = (*list).next;
+	if (c == '#') {
+		state = Int;
+	} else if (c == '\"') {
+		state = String;
+	} else if (c == '&' || Letter(c)) {
+		state = Ident;
+	} else if (c == '=') {
+		state = Equal;
+	} else if (c == '>' || c == '<') {
+		state = lg;
+	} else if (c == '/') {
+		state = Comment;
+	} else if (EndLine(c) || Brace(c) || Single(c) || c == ' ' || c == '\t') {
+		state = S;
+	} else {
+		state = Error;
 	}
 }
 
-int main(int argc, char **argv)
+void Automat::StateString(char c)
 {
-//	ListOfLexeme *list = new ListOfLexeme, *help;
-	Automat automat;
-	Lexeme *lex;
-	FILE *f;
-	char c;
+	if (c == '\"') {
+		state = S;
+	} else if (All(c) || c == ' ' || c == '\t') {
+	} else {
+		state = Error;
+	}
+}
+
+void Automat::StateIdent(char c)
+{
+	if (Letter(c) || Digit(c)) {
+	} else if (Delimiter(c)) {
+		state = SResend;
+	} else {
+		state = Error;
+	}
+}
+
+void Automat::StateInt(char c)
+{
+	if (Digit(c)) {
+	} else if (c == '.') {
+		state = Real;
+	} else if (Delimiter(c)) {
+		state = SResend;
+	} else {
+		state = Error;
+	}
+}
+
+void Automat::StateReal(char c)
+{
+	if (Digit(c)) {
+	} else if (Delimiter(c)) {
+		state = SResend;
+	} else {
+		state = Error;
+	}
+}
+
+void Automat::StateEqual(char c)
+{
+	if (c == '=' || c == '!') {
+		state = S;
+	} else if (Delimiter(c)) {
+		state = SResend;
+	} else {
+		state = Error;
+	}
+}
+
+void Automat::StateLessGreater(char c)
+{
+	if (c == '=') {
+		state = S;
+	} else if (Delimiter(c)) {
+		state = SResend;
+	} else {
+		state = Error;
+	}
+}
+
+void Automat::StateComment(char c)
+{
+	if (EndLine(c)) {
+		state = S;
+	}
+}
+
+void Automat::AddBuf(char c)
+{
+	if (((c != ' ' && c != '\t') || BufSize != 0) && !EndLine(c)) {
+		buf[BufSize++] = c;
+		buf[BufSize] = 0;
+	}
+}
+
+int Automat::GetLexNum()
+{
+	int i = 0;
+	if (buf[0] == '&')
+		return LexIdent;
+	if (buf[0] == '#')
+		return LexConst;
+	if (buf[0] == '/')
+		return LexCom;
+	if (buf[0] == '"')
+		return LexStr;
+	while(TableOfWords[i] != NULL) {
+		if (!strcmp(buf, TableOfWords[i]))
+			return i;
+		i++;
+	}
+	return LexError;
+}
+
+FILE *OpenFile(int argc, char **argv)
+{
 	if (argc < 2)
 		return 0;
-	if (!(f = fopen(argv[1], "r")))
+	return fopen(argv[1], "r");
+}
+	 
+int main(int argc, char **argv)
+{
+	Automat automat;
+	Lexeme *lex;
+	char c;
+	FILE *f = OpenFile(argc, argv);
+	if (!f)
 		return 0;
-	while((c = fgetc(f)) != EOF) {
+	do {
+		c = fgetc(f);
 		if ((lex = automat.FeedChar(c)) != NULL) {
 			if ((*lex).CheckCorrect()) {
-				(*lex).PrintLexeme();
+				(*lex).Print();
 			} else {
-				PrintError(lex);
+				(*lex).PrintError();
 				return 0;
 			}
 		}
-	}
-	if ((lex = automat.FeedChar(' ')) != NULL) {
-		if ((*lex).CheckCorrect()) {
-			(*lex).PrintLexeme();
-		} else {
-			PrintError(lex);
-			return 0;
-		}
-	}
+	} while(c != EOF);
 	printf("Correct\n");
 	return 0;
 }
