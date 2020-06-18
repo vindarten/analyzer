@@ -3,7 +3,7 @@ birth
 	real b[4](5), Array[3, 8](6.5)
 	string str("Hello, world!")
 	b[2] := a[3, 5] := a[1, 2] = 4;
-	str = "Help me, I am in Hell!";
+	str = "Help me!";
 	if(4<5) {
 		int c(9)
 	} else {
@@ -14,4 +14,9 @@ birth
 		real d(9.0)
 		i = i + 1;
 	}
+	while(i < 2) {
+		real d(9.0)
+		i = i + 1;
+	}
+	a[1, 1] = 5 + 1.0;
 death
